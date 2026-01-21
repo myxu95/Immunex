@@ -4,17 +4,20 @@ Complex Angle Analyzer for pHLA-TCR Complexes (Fixed Version)
 
 Comprehensive docking geometry analysis for TCR-pMHC MD trajectories:
 - Crossing Angle: TCR long axis vs MHC groove axis
-- Incident Angle: TCR tilt relative to MHC surface
+- Tilt Angle: TCR projection on MHC surface vs groove axis (VMD definition)
 - Docking Angle: TCR rotation around peptide axis
 
-**KEY FIX**: Added frame-to-frame direction alignment to eliminate 180° sign flips
-caused by SVD direction ambiguity.
+**VERSION HISTORY**:
+- v2.0.0 (2025-12-22): Added frame-to-frame direction alignment to eliminate
+  180° sign flips caused by SVD direction ambiguity
+- v2.1.0 (2026-01-15): CRITICAL FIX - Corrected incident_angle calculation
+  to implement VMD's tilt angle definition (TCR projection vs groove axis)
+  instead of incorrect TCR vs normal angle
 
 Based on Rudolph & Wilson coordinate system framework.
 
 Author: AfterMD Development Team
-Date: 2025-12-22 (Fixed version)
-Version: 2.0.0
+Version: 2.1.0
 """
 
 import MDAnalysis as mda
@@ -40,13 +43,16 @@ class ComplexAngleAnalyzer:
 
     Calculates geometric parameters describing TCR orientation on MHC surface:
     1. Crossing Angle: TCR Vα/Vβ axis vs MHC α1/α2 helix axis (0-90°)
-    2. Incident Angle: TCR tilt relative to MHC surface normal (0-90°)
+    2. Tilt Angle: TCR projection on MHC surface vs groove axis (0-90°, VMD definition)
     3. Docking Angle: TCR rotation around peptide axis (-180° to +180°)
 
-    **KEY IMPROVEMENT (v2.0.0)**:
-    - Frame-to-frame direction alignment for all axes
-    - Eliminates 180° sign flips from SVD direction ambiguity
-    - Ensures continuous angle trajectories
+    **KEY IMPROVEMENTS**:
+    - v2.0.0: Frame-to-frame direction alignment for all axes
+              Eliminates 180° sign flips from SVD direction ambiguity
+              Ensures continuous angle trajectories
+    - v2.1.0: CRITICAL FIX - Corrected tilt angle calculation
+              Now uses VMD's projection method (TCR proj vs groove axis)
+              Previous version incorrectly used TCR vs normal (3D angle)
 
     Chain Structure (pHLA-TCR standard):
     - Chain A: HLA-α (MHC heavy chain)
@@ -343,12 +349,28 @@ class ComplexAngleAnalyzer:
 
     def calculate_incident_angle(self) -> pd.DataFrame:
         """
-        Calculate TCR incident angle (tilt relative to MHC surface).
+        Calculate TCR tilt angle (VMD definition - CORRECTED v2.1).
 
-        Incident Angle: Angle between TCR axis and MHC surface normal.
-        - Flat docking: 30-40°
-        - Tilted docking: 50-70°
-        - Range: 0-90°
+        Tilt Angle: Angle between TCR axis PROJECTION on MHC surface plane
+                    and MHC groove axis (2D angle on surface plane).
+
+        **CRITICAL FIX (v2.1.0 - 2026-01-15)**:
+        - Previous implementation incorrectly calculated TCR vs MHC normal (3D angle)
+        - Corrected to VMD's tilt angle definition: TCR projection vs groove axis
+        - Method:
+          1. Project TCR axis onto MHC surface plane (remove normal component)
+          2. Calculate angle between projection and MHC groove axis
+
+        Physical Interpretation:
+        - Low angle (0-20°): TCR nearly aligned with groove axis
+        - Medium angle (20-50°): Typical canonical TCR-pMHC docking
+        - High angle (50-90°): TCR perpendicular to groove axis
+
+        Typical values: 30-40° for canonical TCR-pMHC complexes
+
+        Reference:
+            VMD script: mkvmd_tiltangle.sh (lines 64-70)
+            Rudolph & Wilson coordinate system
 
         **FIX**: Added direction alignment to prevent 180° flips
 
@@ -356,43 +378,65 @@ class ComplexAngleAnalyzer:
             DataFrame with columns: time_ns, angle_deg
 
         Outputs:
-            CSV: angles/incident_angle.csv
+            CSV: angles/incident_angle.csv (name kept for backward compatibility)
         """
         logger.info("=" * 60)
-        logger.info("Calculating Incident Angle (TCR tilt)...")
+        logger.info("Calculating Tilt Angle (VMD definition - CORRECTED)...")
         logger.info("=" * 60)
 
         times = []
         angles = []
 
-        # Store previous frame directions
+        # Store previous frame directions for alignment
+        prev_mhc_axis = None
         prev_mhc_normal = None
         prev_tcr_axis = None
 
         for ts in self.u.trajectory:
             try:
                 # Extract axes
-                _, mhc_normal = self._extract_mhc_axis()
+                mhc_axis, mhc_normal = self._extract_mhc_axis()
                 tcr_axis = self._extract_tcr_axis()
 
-                # ✨ NEW: Direction alignment
-                if prev_mhc_normal is not None:
+                # ✨ Direction alignment with previous frame
+                if prev_mhc_axis is not None:
+                    if np.dot(mhc_axis, prev_mhc_axis) < 0:
+                        mhc_axis = -mhc_axis
                     if np.dot(mhc_normal, prev_mhc_normal) < 0:
                         mhc_normal = -mhc_normal
                     if np.dot(tcr_axis, prev_tcr_axis) < 0:
                         tcr_axis = -tcr_axis
 
+                prev_mhc_axis = mhc_axis.copy()
                 prev_mhc_normal = mhc_normal.copy()
                 prev_tcr_axis = tcr_axis.copy()
 
-                # Calculate angle
-                cos_angle = np.dot(tcr_axis, mhc_normal)
-                cos_angle = np.clip(cos_angle, -1.0, 1.0)
+                # ========================================
+                # CORRECTED VMD TILT ANGLE CALCULATION
+                # ========================================
+                # Step 1: Project TCR axis onto MHC surface plane
+                # (Remove the component parallel to MHC normal)
+                tcr_proj_on_plane = tcr_axis - np.dot(tcr_axis, mhc_normal) * mhc_normal
+                tcr_proj_norm = np.linalg.norm(tcr_proj_on_plane)
 
-                angle_rad = np.arccos(cos_angle)
+                if tcr_proj_norm < 1e-6:
+                    # TCR is perpendicular to MHC surface (very rare)
+                    logger.warning(f"Frame {ts.frame}: TCR perpendicular to MHC surface")
+                    times.append(ts.time / 1000.0)
+                    angles.append(np.nan)
+                    continue
+
+                # Normalize the projection
+                tcr_proj_normalized = tcr_proj_on_plane / tcr_proj_norm
+
+                # Step 2: Calculate angle between projection and MHC groove axis
+                cos_tilt = np.dot(tcr_proj_normalized, mhc_axis)
+                cos_tilt = np.clip(cos_tilt, -1.0, 1.0)
+
+                angle_rad = np.arccos(np.abs(cos_tilt))  # Use abs to ensure 0-90°
                 angle_deg = np.degrees(angle_rad)
 
-                # Ensure 0-90° range
+                # Ensure 0-90° range (axial angle)
                 if angle_deg > 90.0:
                     angle_deg = 180.0 - angle_deg
 
@@ -413,14 +457,14 @@ class ComplexAngleAnalyzer:
         df = df.dropna()
 
         if len(df) == 0:
-            logger.error("No valid incident angles calculated!")
+            logger.error("No valid tilt angles calculated!")
             return df
 
-        # Save CSV
+        # Save CSV (filename kept as incident_angle.csv for backward compatibility)
         output_file = self.subdirs['angles'] / 'incident_angle.csv'
         df.to_csv(output_file, index=False)
 
-        logger.info(f"Incident angle saved: {output_file}")
+        logger.info(f"Tilt angle (VMD definition) saved: {output_file}")
         logger.info(f"  Valid frames: {len(df)}")
         logger.info(f"  Mean angle: {df['angle_deg'].mean():.2f}°")
         logger.info(f"  Std: {df['angle_deg'].std():.2f}°")
@@ -566,7 +610,7 @@ class ComplexAngleAnalyzer:
             'time_range_ps': [float(self.u.trajectory[0].time),
                              float(self.u.trajectory[-1].time)],
             'timestamp': datetime.now().isoformat(),
-            'version': '2.0.0 (direction-aligned)',
+            'version': '2.1.0 (VMD tilt angle corrected)',
             'results': self.results
         }
 
@@ -585,7 +629,7 @@ class ComplexAngleAnalyzer:
         """
         logger.info("\n" + "=" * 70)
         logger.info(f"COMPLEX ANGLE ANALYSIS: {self.task_name}")
-        logger.info("VERSION: 2.0.0 (Direction-Aligned)")
+        logger.info("VERSION: 2.1.0 (VMD Tilt Angle Corrected)")
         logger.info("=" * 70)
         logger.info(f"Trajectory: {self.trajectory}")
         logger.info(f"Topology: {self.topology}")
@@ -599,8 +643,8 @@ class ComplexAngleAnalyzer:
             logger.info("\n>>> Phase 1/3: Crossing Angle")
             self.calculate_crossing_angle()
 
-            # Phase 2: Incident angle
-            logger.info("\n>>> Phase 2/3: Incident Angle")
+            # Phase 2: Tilt angle (corrected VMD definition)
+            logger.info("\n>>> Phase 2/3: Tilt Angle (VMD definition - CORRECTED)")
             self.calculate_incident_angle()
 
             # Phase 3: Docking angle
@@ -633,25 +677,27 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='Complex Angle Analyzer for pHLA-TCR Complexes (Fixed v2.0)',
+        description='Complex Angle Analyzer for pHLA-TCR Complexes (Fixed v2.1)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Analyze single task
-  python complex_angle_analyzer_fixed.py \\
+  python complex_angle_analyzer.py \\
       1ao7_run1 \\
       /path/to/1ao7_processed.xtc \\
       /path/to/1ao7_standardized.pdb \\
-      ./angle_results_fixed/1ao7_run1
+      ./angle_results/1ao7_run1
 
   # Analyze with auto output directory
-  python complex_angle_analyzer_fixed.py \\
+  python complex_angle_analyzer.py \\
       1ao7_run1 \\
       /path/to/trajectory.xtc \\
       /path/to/topology.pdb
 
-Version: 2.0.0 (Direction-Aligned)
-Changes: Fixed 180° sign flips in Docking Angle by aligning frame-to-frame directions
+Version: 2.1.0 (VMD Tilt Angle Corrected)
+Changes:
+  - v2.0.0: Fixed 180° sign flips via frame-to-frame direction alignment
+  - v2.1.0: CRITICAL - Corrected tilt angle to use VMD projection method
         """
     )
 

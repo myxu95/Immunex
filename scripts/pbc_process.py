@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional, List
 
 try:
-    from aftermd.preprocessing import PBCProcessor
+    from aftermd.core import PBCProcessor
     from aftermd.utils import BatchProcessor, PathManager
 except ImportError as e:
     print(f"Error importing AfterMD modules: {e}")
@@ -92,9 +92,12 @@ def process_single_trajectory(args) -> bool:
             trajectory=args.trajectory,
             topology=args.topology,
             output_dir=args.output,
+            method=args.method,
             center_group=args.center_group,
             fit_group=args.fit_group,
-            dt=args.dt
+            dt=args.dt,
+            auto_dt=not args.no_auto_dt,
+            use_nojump=args.nojump
         )
 
         print("PBC processing completed successfully!")
@@ -168,9 +171,12 @@ def process_batch_trajectories(args) -> bool:
                     trajectory=traj_file,
                     topology=topology,
                     output_dir=str(output_subdir),
+                    method=args.method,
                     center_group=args.center_group,
                     fit_group=args.fit_group,
-                    dt=args.dt
+                    dt=args.dt,
+                    auto_dt=not args.no_auto_dt,
+                    use_nojump=args.nojump
                 )
 
                 return {
@@ -224,17 +230,30 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Process single trajectory
+  # Process single trajectory with 2-step method (recommended, default)
   python scripts/pbc_process.py -f md.xtc -s md.tpr -o processed/
 
-  # Process with custom groups and downsampling
-  python scripts/pbc_process.py -f md.xtc -s md.tpr -o processed/ --dt 10.0 --center-group "Protein" --fit-group "Backbone"
+  # Process with 3-step method
+  python scripts/pbc_process.py -f md.xtc -s md.tpr -o processed/ --method 3step
 
-  # Batch process multiple trajectories
+  # Process with custom groups and downsampling
+  python scripts/pbc_process.py -f md.xtc -s md.tpr -o processed/ --dt 10.0 --fit-group "Backbone"
+
+  # Batch process multiple trajectories with 2-step method
   python scripts/pbc_process.py -d input_dir/ -o output_dir/ --batch --pattern "*.xtc"
 
   # Keep temporary files for debugging
   python scripts/pbc_process.py -f md.xtc -s md.tpr -o processed/ --keep-temp --verbose
+
+Method comparison:
+  2-step (recommended): Simple and effective for large complexes like TCR-pMHC
+    Step 1: gmx trjconv -pbc nojump (prevent atom jumps)
+    Step 2: gmx trjconv -fit rot+trans (align structures)
+
+  3-step (standard): Complete GROMACS workflow
+    Step 1: gmx trjconv -center -pbc nojump (center on group)
+    Step 2: gmx trjconv -pbc whole (make molecules whole)
+    Step 3: gmx trjconv -fit rot+trans (align structures)
         """
     )
 
@@ -257,12 +276,21 @@ Examples:
                         help='Number of parallel workers for batch processing (default: 4)')
 
     # Processing options
+    parser.add_argument('--method', default='2step',
+                        choices=['2step', '3step'],
+                        help='PBC processing method (default: 2step)\n'
+                             '  2step: nojump -> fit (recommended for large complexes)\n'
+                             '  3step: center -> whole -> fit (standard GROMACS workflow)')
     parser.add_argument('--center-group',
                         help='Group for centering (default: auto-select)')
     parser.add_argument('--fit-group',
                         help='Group for fitting (default: auto-select)')
     parser.add_argument('--dt', type=float,
-                        help='Time interval for frame sampling in ps (default: no downsampling)')
+                        help='Time interval for frame sampling in ps (default: auto-calculated for ~1000 frames)')
+    parser.add_argument('--no-auto-dt', action='store_true',
+                        help='Disable automatic dt calculation (use all frames)')
+    parser.add_argument('--nojump', action='store_true',
+                        help='Enable -pbc nojump to prevent atom jumps across periodic boundaries (useful for fixing PBC artifacts)')
 
     # GROMACS options
     parser.add_argument('--gmx', default='gmx',

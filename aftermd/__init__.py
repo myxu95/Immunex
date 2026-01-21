@@ -24,7 +24,7 @@ from .analysis import (
 # Quality analysis modules
 from .analysis.quality import (
     MDCompletenessChecker, StructureValidator,
-    BatchTracker, QualityReporter
+    BatchTracker, QualityReporter, EnergyQualityChecker
 )
 
 # Preprocessing modules

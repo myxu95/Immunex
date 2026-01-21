@@ -155,4 +155,15 @@ slurm-*.out
 *_backup
 
 # Generated documentation
-docs/_build/
+docs/_build//input/
+
+# Workspace directories (large analysis results)
+*workspace/
+*_workspace/
+development/workspaces/
+development/logs/
+
+# Data directories
+input/
+output/
+test_allostery_peptide/

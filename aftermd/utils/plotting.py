@@ -521,6 +521,317 @@ class PlotManager:
 
         plt.show()
 
+    def plot_cdr3_rmsd_summary(self,
+                              summary_csv: str,
+                              output_dir: Optional[str] = None,
+                              show_plots: bool = True) -> Dict[str, str]:
+        """
+        Generate comprehensive CDR3 RMSD summary visualizations.
+
+        Args:
+            summary_csv: Path to CDR3 RMSD summary CSV file
+            output_dir: Directory to save plots (defaults to same dir as CSV)
+            show_plots: Whether to display plots
+
+        Returns:
+            Dictionary mapping plot types to saved file paths
+        """
+        df = pd.read_csv(summary_csv)
+
+        if output_dir is None:
+            output_dir = Path(summary_csv).parent
+        else:
+            output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+        output_paths = {}
+
+        # 4-panel summary figure
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+
+        # Panel 1: RMSD Distribution Histogram
+        ax = axes[0, 0]
+        ax.hist(df['rmsd_mean_nm'], bins=30, alpha=0.7, color='steelblue', edgecolor='black')
+        mean_val = df['rmsd_mean_nm'].mean()
+        median_val = df['rmsd_mean_nm'].median()
+        ax.axvline(mean_val, color='red', linestyle='--', linewidth=2,
+                  label=f'Mean: {mean_val:.4f} nm')
+        ax.axvline(median_val, color='green', linestyle='--', linewidth=2,
+                  label=f'Median: {median_val:.4f} nm')
+        ax.set_xlabel('Mean RMSD (nm)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Frequency', fontsize=12, fontweight='bold')
+        ax.set_title('CDR3β RMSD Distribution', fontsize=14, fontweight='bold')
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3)
+
+        # Panel 2: Box plot comparison
+        ax = axes[0, 1]
+        box_data = [df['rmsd_mean_nm'], df['rmsd_std_nm'], df['rmsd_max_nm']]
+        bp = ax.boxplot(box_data, labels=['Mean', 'Std', 'Max'], patch_artist=True)
+        for patch, color in zip(bp['boxes'], ['lightblue', 'lightgreen', 'lightcoral']):
+            patch.set_facecolor(color)
+        ax.set_ylabel('RMSD (nm)', fontsize=12, fontweight='bold')
+        ax.set_title('RMSD Statistics Comparison', fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3, axis='y')
+
+        # Panel 3: Mean vs Std scatter plot
+        ax = axes[1, 0]
+        scatter = ax.scatter(df['rmsd_mean_nm'], df['rmsd_std_nm'],
+                           c=df['rmsd_max_nm'], cmap='viridis',
+                           s=100, alpha=0.6, edgecolors='black', linewidth=0.5)
+        ax.set_xlabel('Mean RMSD (nm)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Std RMSD (nm)', fontsize=12, fontweight='bold')
+        ax.set_title('Mean vs Std RMSD (colored by Max)', fontsize=14, fontweight='bold')
+        cbar = plt.colorbar(scatter, ax=ax)
+        cbar.set_label('Max RMSD (nm)', fontsize=10)
+        ax.grid(True, alpha=0.3)
+
+        # Panel 4: Top 20 highest RMSD tasks
+        ax = axes[1, 1]
+        top_20 = df.nlargest(20, 'rmsd_mean_nm')
+        colors_gradient = plt.cm.coolwarm(np.linspace(0, 1, 20))
+        ax.barh(range(20), top_20['rmsd_mean_nm'].values, color=colors_gradient)
+        ax.set_yticks(range(20))
+        ax.set_yticklabels(top_20['task_name'].values, fontsize=8)
+        ax.set_xlabel('Mean RMSD (nm)', fontsize=12, fontweight='bold')
+        ax.set_title('Top 20 Highest RMSD Tasks', fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3, axis='x')
+        ax.invert_yaxis()
+
+        plt.tight_layout()
+
+        # Save 4-panel figure
+        summary_path = output_dir / "cdr3_beta_rmsd_summary.png"
+        plt.savefig(summary_path, dpi=300, bbox_inches='tight')
+        output_paths['summary'] = str(summary_path)
+
+        if show_plots:
+            plt.show()
+        else:
+            plt.close()
+
+        print(f"CDR3 RMSD summary plot saved: {summary_path}")
+
+        return output_paths
+
+    def plot_cdr3_stability_distribution(self,
+                                        summary_csv: str,
+                                        output_dir: Optional[str] = None,
+                                        show_plots: bool = True) -> Dict[str, str]:
+        """
+        Generate CDR3 stability distribution visualizations.
+
+        Args:
+            summary_csv: Path to CDR3 RMSD summary CSV file
+            output_dir: Directory to save plots
+            show_plots: Whether to display plots
+
+        Returns:
+            Dictionary mapping plot types to saved file paths
+        """
+        df = pd.read_csv(summary_csv)
+
+        if output_dir is None:
+            output_dir = Path(summary_csv).parent
+        else:
+            output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Categorize by RMSD
+        def categorize_rmsd(rmsd):
+            if rmsd < 0.10:
+                return 'Very Stable (<0.10 nm)'
+            elif rmsd < 0.15:
+                return 'Stable (0.10-0.15 nm)'
+            elif rmsd < 0.20:
+                return 'Moderate (0.15-0.20 nm)'
+            elif rmsd < 0.25:
+                return 'Flexible (0.20-0.25 nm)'
+            else:
+                return 'Highly Flexible (>0.25 nm)'
+
+        df['stability_category'] = df['rmsd_mean_nm'].apply(categorize_rmsd)
+        category_counts = df['stability_category'].value_counts()
+
+        # Create 2-panel figure
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+        # Panel 1: Pie chart
+        ax = axes[0]
+        colors = ['#2ecc71', '#3498db', '#f39c12', '#e74c3c', '#9b59b6']
+        wedges, texts, autotexts = ax.pie(category_counts, labels=category_counts.index,
+                                          autopct='%1.1f%%', colors=colors, startangle=90,
+                                          textprops={'fontsize': 10, 'fontweight': 'bold'})
+        ax.set_title('CDR3β Stability Distribution', fontsize=14, fontweight='bold')
+
+        # Panel 2: Bar chart
+        ax = axes[1]
+        category_order = ['Very Stable (<0.10 nm)', 'Stable (0.10-0.15 nm)',
+                         'Moderate (0.15-0.20 nm)', 'Flexible (0.20-0.25 nm)',
+                         'Highly Flexible (>0.25 nm)']
+        counts = [category_counts.get(cat, 0) for cat in category_order]
+        bars = ax.bar(range(len(category_order)), counts, color=colors)
+        ax.set_xticks(range(len(category_order)))
+        ax.set_xticklabels(category_order, rotation=45, ha='right', fontsize=9)
+        ax.set_ylabel('Number of Complexes', fontsize=12, fontweight='bold')
+        ax.set_title('Stability Category Counts', fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3, axis='y')
+
+        # Add count labels on bars
+        for bar, count in zip(bars, counts):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{int(count)}', ha='center', va='bottom', fontweight='bold')
+
+        plt.tight_layout()
+
+        # Save figure
+        stability_path = output_dir / "cdr3_beta_stability_categories.png"
+        plt.savefig(stability_path, dpi=300, bbox_inches='tight')
+
+        if show_plots:
+            plt.show()
+        else:
+            plt.close()
+
+        print(f"CDR3 stability distribution plot saved: {stability_path}")
+
+        return {'stability': str(stability_path)}
+
+    def plot_cdr3_rmsd_comparison(self,
+                                 summary_csv: str,
+                                 task_names: List[str],
+                                 trajectory_dir: str,
+                                 output_path: Optional[str] = None,
+                                 show_stats: bool = True) -> None:
+        """
+        Compare CDR3 RMSD trajectories for multiple tasks.
+
+        Args:
+            summary_csv: Path to CDR3 RMSD summary CSV file
+            task_names: List of task names to compare
+            trajectory_dir: Base directory containing trajectory subdirectories
+            output_path: Output file path
+            show_stats: Show statistics on plot
+        """
+        df = pd.read_csv(summary_csv)
+        trajectory_dir = Path(trajectory_dir)
+
+        fig, ax = plt.subplots(figsize=(14, 8))
+
+        for i, task_name in enumerate(task_names):
+            # Get RMSD file path
+            rmsd_file = trajectory_dir / task_name / "cdr3_beta_rmsd.xvg"
+
+            if not rmsd_file.exists():
+                print(f"Warning: RMSD file not found for {task_name}")
+                continue
+
+            # Read RMSD data
+            rmsd_df = self.read_xvg_file(str(rmsd_file))
+            if rmsd_df.empty:
+                continue
+
+            time = rmsd_df[rmsd_df.columns[0]].values / 1000  # Convert to ns
+            rmsd = rmsd_df[rmsd_df.columns[1]].values
+
+            color = self.colors[i % len(self.colors)]
+
+            # Plot trajectory
+            ax.plot(time, rmsd, color=color, linewidth=1.5, alpha=0.8, label=task_name)
+
+            # Add statistics if requested
+            if show_stats:
+                task_stats = df[df['task_name'] == task_name]
+                if not task_stats.empty:
+                    mean_rmsd = task_stats['rmsd_mean_nm'].values[0]
+                    ax.axhline(y=mean_rmsd, color=color, linestyle=':', alpha=0.5, linewidth=1)
+
+        ax.set_xlabel('Time (ns)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('CDR3β RMSD (nm)', fontsize=12, fontweight='bold')
+        ax.set_title(f'CDR3β RMSD Comparison ({len(task_names)} tasks)',
+                    fontsize=14, fontweight='bold')
+        ax.legend(loc='best', framealpha=0.9, fontsize=10)
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(bottom=0)
+
+        plt.tight_layout()
+
+        if output_path:
+            plt.savefig(output_path, dpi=300, bbox_inches='tight')
+            print(f"CDR3 RMSD comparison plot saved: {output_path}")
+
+        plt.show()
+
+    def plot_cdr3_rmsd_heatmap(self,
+                              summary_csv: str,
+                              output_path: Optional[str] = None,
+                              top_n: Optional[int] = None,
+                              sort_by: str = 'rmsd_mean_nm') -> None:
+        """
+        Generate heatmap visualization of CDR3 RMSD statistics across tasks.
+
+        Args:
+            summary_csv: Path to CDR3 RMSD summary CSV file
+            output_path: Output file path
+            top_n: Show only top N tasks (by sort_by metric)
+            sort_by: Column to sort by ('rmsd_mean_nm', 'rmsd_std_nm', etc.)
+        """
+        df = pd.read_csv(summary_csv)
+
+        # Select columns for heatmap
+        heatmap_cols = ['rmsd_mean_nm', 'rmsd_std_nm', 'rmsd_min_nm',
+                       'rmsd_max_nm', 'rmsd_median_nm', 'rmsd_range_nm']
+
+        # Filter columns that exist
+        heatmap_cols = [col for col in heatmap_cols if col in df.columns]
+
+        # Sort and optionally limit to top N
+        df_sorted = df.sort_values(by=sort_by, ascending=False)
+        if top_n:
+            df_sorted = df_sorted.head(top_n)
+
+        # Prepare data for heatmap
+        heatmap_data = df_sorted[heatmap_cols].values
+        task_labels = df_sorted['task_name'].values
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, max(8, len(task_labels) * 0.3)))
+
+        # Create heatmap
+        im = ax.imshow(heatmap_data, cmap='YlOrRd', aspect='auto')
+
+        # Set ticks and labels
+        ax.set_xticks(range(len(heatmap_cols)))
+        ax.set_xticklabels([col.replace('rmsd_', '').replace('_nm', '')
+                           for col in heatmap_cols], rotation=45, ha='right')
+        ax.set_yticks(range(len(task_labels)))
+        ax.set_yticklabels(task_labels, fontsize=8)
+
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('RMSD (nm)', fontsize=10, fontweight='bold')
+
+        # Add title
+        title = f'CDR3β RMSD Heatmap'
+        if top_n:
+            title += f' (Top {top_n} by {sort_by})'
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+
+        # Add values as text
+        for i in range(len(task_labels)):
+            for j in range(len(heatmap_cols)):
+                text = ax.text(j, i, f'{heatmap_data[i, j]:.3f}',
+                             ha="center", va="center", color="black", fontsize=7)
+
+        plt.tight_layout()
+
+        if output_path:
+            plt.savefig(output_path, dpi=300, bbox_inches='tight')
+            print(f"CDR3 RMSD heatmap saved: {output_path}")
+
+        plt.show()
+
     def plot_rmsd_convergence(self,
                              rmsd_file: str,
                              window_sizes: List[int] = [100, 500, 1000, 2000],
@@ -601,3 +912,232 @@ class PlotManager:
             print(f"RMSD convergence plot saved to: {output_path}")
 
         plt.show()
+
+    @staticmethod
+    def plot_cdr_rmsf_curves(rmsf_output_dir: str,
+                             output_path: Optional[str] = None,
+                             show_plot: bool = True,
+                             n_points: int = 100,
+                             figsize: Tuple[int, int] = (14, 8)) -> None:
+        """
+        Generate CDR RMSF comparison using normalized position curves.
+
+        Creates overlaid RMSF curves for 6 CDR loops (Alpha/Beta CDR1/2/3) with
+        normalized relative positions to handle variable CDR lengths. Shows mean
+        curve with standard deviation shaded region.
+
+        Args:
+            rmsf_output_dir: Directory containing task subdirectories with cdr_rmsf_extracted.json
+            output_path: Output file path for saving plot (optional)
+            show_plot: Whether to display the plot interactively
+            n_points: Number of interpolation points for normalized position (default: 100)
+            figsize: Figure size (width, height) in inches
+
+        Returns:
+            None
+
+        Example:
+            >>> PlotManager.plot_cdr_rmsf_curves(
+            ...     rmsf_output_dir="output/rmsf_cdr",
+            ...     output_path="output/rmsf_cdr/cdr_rmsf_curves_comparison.png"
+            ... )
+        """
+        import json
+        from scipy.interpolate import interp1d
+
+        rmsf_dir = Path(rmsf_output_dir)
+        if not rmsf_dir.exists():
+            raise FileNotFoundError(f"RMSF output directory not found: {rmsf_output_dir}")
+
+        # CDR mapping: JSON keys to display names
+        cdr_mapping = {
+            'alpha_cdr1': 'Alpha CDR1',
+            'alpha_cdr2': 'Alpha CDR2',
+            'alpha_cdr3': 'Alpha CDR3',
+            'beta_cdr1': 'Beta CDR1',
+            'beta_cdr2': 'Beta CDR2',
+            'beta_cdr3': 'Beta CDR3'
+        }
+
+        # Collect RMSF curves for each CDR
+        cdr_curves = {key: [] for key in cdr_mapping.keys()}
+
+        # Scan all task directories
+        task_dirs = [d for d in rmsf_dir.iterdir() if d.is_dir()]
+        print(f"Scanning {len(task_dirs)} task directories...")
+
+        for task_dir in task_dirs:
+            json_file = task_dir / "cdr_rmsf_extracted.json"
+            if not json_file.exists():
+                continue
+
+            try:
+                with open(json_file, 'r') as f:
+                    data = json.load(f)
+
+                # Extract RMSF values for each CDR
+                for cdr_key in cdr_mapping.keys():
+                    if cdr_key in data and 'rmsf_values' in data[cdr_key]:
+                        rmsf_values = data[cdr_key]['rmsf_values']
+                        if len(rmsf_values) > 0:
+                            cdr_curves[cdr_key].append(rmsf_values)
+            except Exception as e:
+                print(f"Warning: Failed to read {json_file}: {e}")
+                continue
+
+        # Check if we have data
+        total_curves = sum(len(curves) for curves in cdr_curves.values())
+        if total_curves == 0:
+            raise ValueError("No valid RMSF curves found in any JSON files")
+
+        print(f"Loaded RMSF curves: {total_curves} total")
+        for cdr_key, curves in cdr_curves.items():
+            if len(curves) > 0:
+                print(f"  {cdr_mapping[cdr_key]}: {len(curves)} samples")
+
+        # Normalize and interpolate curves to common grid
+        normalized_grid = np.linspace(0, 1, n_points)
+        interpolated_curves = {key: [] for key in cdr_mapping.keys()}
+
+        for cdr_key, curves in cdr_curves.items():
+            for curve in curves:
+                if len(curve) < 2:
+                    continue  # Skip too short curves
+
+                # Create normalized position for original curve
+                original_positions = np.linspace(0, 1, len(curve))
+
+                # Interpolate to common grid
+                try:
+                    interp_func = interp1d(original_positions, curve,
+                                          kind='linear', bounds_error=False,
+                                          fill_value='extrapolate')
+                    interpolated_curve = interp_func(normalized_grid)
+                    interpolated_curves[cdr_key].append(interpolated_curve)
+                except Exception as e:
+                    print(f"Warning: Interpolation failed for {cdr_key}: {e}")
+                    continue
+
+        # Calculate mean and std for each CDR
+        cdr_stats = {}
+        for cdr_key in cdr_mapping.keys():
+            if len(interpolated_curves[cdr_key]) > 0:
+                curves_array = np.array(interpolated_curves[cdr_key])
+                cdr_stats[cdr_key] = {
+                    'mean': np.mean(curves_array, axis=0),
+                    'std': np.std(curves_array, axis=0),
+                    'n_samples': len(interpolated_curves[cdr_key])
+                }
+
+        # Set style - academic journal style
+        plt.style.use('seaborn-v0_8-white')
+        plt.rcParams['font.family'] = 'Arial'
+        plt.rcParams['font.size'] = 11
+        plt.rcParams['axes.linewidth'] = 1.2
+        plt.rcParams['axes.edgecolor'] = '#333333'
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # Academic journal color scheme (high contrast, print-friendly)
+        # Using distinct colors from ColorBrewer Set1 palette
+        colors = {
+            'alpha_cdr1': '#E41A1C',  # Red
+            'alpha_cdr2': '#377EB8',  # Blue
+            'alpha_cdr3': '#4DAF4A',  # Green
+            'beta_cdr1': '#984EA3',   # Purple
+            'beta_cdr2': '#FF7F00',   # Orange
+            'beta_cdr3': '#A65628'    # Brown
+        }
+
+        # Line styles for better distinction in grayscale printing
+        line_styles = {
+            'alpha_cdr1': '-',      # Solid
+            'alpha_cdr2': '-',      # Solid
+            'alpha_cdr3': '-',      # Solid
+            'beta_cdr1': '--',      # Dashed
+            'beta_cdr2': '--',      # Dashed
+            'beta_cdr3': '--'       # Dashed
+        }
+
+        # Markers for additional distinction
+        markers = {
+            'alpha_cdr1': 'o', 'alpha_cdr2': 's', 'alpha_cdr3': '^',
+            'beta_cdr1': 'o', 'beta_cdr2': 's', 'beta_cdr3': '^'
+        }
+
+        # Plot each CDR curve
+        for cdr_key in cdr_mapping.keys():
+            if cdr_key not in cdr_stats:
+                continue
+
+            stats = cdr_stats[cdr_key]
+            label = f"{cdr_mapping[cdr_key]} (n={stats['n_samples']})"
+
+            # Plot mean curve with markers every 10th point
+            markevery = max(1, n_points // 10)
+            ax.plot(normalized_grid, stats['mean'],
+                   color=colors[cdr_key],
+                   linestyle=line_styles[cdr_key],
+                   linewidth=2.0,
+                   label=label,
+                   alpha=0.95,
+                   marker=markers[cdr_key],
+                   markevery=markevery,
+                   markersize=5,
+                   markerfacecolor='white',
+                   markeredgewidth=1.5,
+                   markeredgecolor=colors[cdr_key])
+
+            # Plot very subtle std region (minimal, for reference only)
+            ax.fill_between(normalized_grid,
+                           stats['mean'] - stats['std'],
+                           stats['mean'] + stats['std'],
+                           color=colors[cdr_key], alpha=0.08, linewidth=0)
+
+        # Customize axes - clean academic style
+        ax.set_xlabel('Normalized Relative Position', fontsize=12, fontweight='normal')
+        ax.set_ylabel('RMSF (nm)', fontsize=12, fontweight='normal')
+        ax.set_title('CDR Loop Flexibility Patterns',
+                    fontsize=14, fontweight='bold', pad=15)
+
+        # Set axis limits
+        ax.set_xlim(0, 1)
+        ax.set_ylim(bottom=0)
+
+        # Clean grid style
+        ax.grid(True, which='major', axis='both', alpha=0.25,
+               linestyle='-', linewidth=0.6, color='#CCCCCC')
+        ax.set_axisbelow(True)
+
+        # Spine styling
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_linewidth(1.2)
+        ax.spines['bottom'].set_linewidth(1.2)
+
+        # Tick parameters
+        ax.tick_params(axis='both', which='major', labelsize=10,
+                      width=1.2, length=5, direction='out')
+
+        # Legend - compact and clean
+        legend = ax.legend(loc='upper left', frameon=True, framealpha=1.0,
+                          fontsize=9, ncol=2, columnspacing=1.0,
+                          handlelength=2.5, handletextpad=0.5,
+                          edgecolor='#333333', fancybox=False)
+        legend.get_frame().set_linewidth(1.0)
+
+        plt.tight_layout()
+
+        # Save figure
+        if output_path:
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+            print(f"CDR RMSF curves comparison plot saved: {output_path}")
+
+        # Display plot
+        if show_plot:
+            plt.show()
+        else:
+            plt.close()

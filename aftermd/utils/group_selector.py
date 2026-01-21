@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging
-from .simple_gro_detector import create_shortest_chain_index
+from .shortest_chain_detector import create_shortest_chain_index
 
 logger = logging.getLogger(__name__)
 

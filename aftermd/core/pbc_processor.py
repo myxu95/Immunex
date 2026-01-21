@@ -85,17 +85,100 @@ class PBCProcessor:
             logger.error(f"stderr: {e.stderr}")
             raise
     
-    def remove_pbc(self, 
+    def remove_pbc_2step(self,
+                         trajectory: str,
+                         topology: str,
+                         output: str,
+                         fit_group: Optional[str] = None,
+                         output_group: Optional[str] = None,
+                         dt: Optional[float] = None) -> str:
+        """
+        Remove PBC using simplified 2-step process: nojump -> fit rot+trans.
+
+        This is the recommended method for large complexes (e.g., TCR-pMHC) based on
+        empirical experience. It avoids potential issues with centering and whole operations.
+
+        Args:
+            trajectory: Input trajectory file (.xtc or .trr)
+            topology: Topology file (.tpr or .gro)
+            output: Output trajectory file
+            fit_group: Group for fitting rot+trans (default: Backbone)
+            output_group: Group to output (default: System)
+            dt: Time interval for frame sampling in ps (default: no downsampling)
+
+        Returns:
+            Path to output file
+        """
+        # Initialize group selector for this topology
+        if self.group_selector is None:
+            self.group_selector = GroupSelector(topology, self.gmx)
+
+        # Auto-select groups if not provided
+        if fit_group is None:
+            fit_group = self.group_selector.select_group("fit_backbone")
+        if output_group is None:
+            output_group = self.group_selector.select_group("output_system")
+
+        # Create and register temporary file
+        temp_nojump = self._register_temp_file(str(Path(output).with_suffix('.temp_nojump.xtc')))
+
+        try:
+            # Step 1: PBC nojump
+            logger.info("Step 1: Applying PBC nojump to prevent atom jumps")
+            nojump_cmd = [
+                "trjconv",
+                "-f", trajectory,
+                "-s", topology,
+                "-o", temp_nojump,
+                "-pbc", "nojump"
+            ]
+
+            if dt is not None:
+                nojump_cmd.extend(["-dt", str(dt)])
+                logger.info(f"Using dt={dt} ps for trajectory downsampling")
+
+            nojump_input = f"{output_group}\n"
+            self._run_gmx_command(nojump_cmd, stdin_input=nojump_input)
+            logger.info("PBC nojump completed")
+
+            # Step 2: Fit rot+trans
+            logger.info("Step 2: Fitting rotational and translational motion")
+            fit_cmd = [
+                "trjconv",
+                "-f", temp_nojump,
+                "-s", topology,
+                "-o", output,
+                "-fit", "rot+trans"
+            ]
+
+            fit_input = f"{fit_group}\n{output_group}\n"
+            self._run_gmx_command(fit_cmd, stdin_input=fit_input)
+            logger.info(f"Applied rot+trans fitting using group: {fit_group}")
+
+            logger.info(f"2-step PBC processing completed: {output}")
+            logger.info(f"Used groups - Fit: {fit_group}, Output: {output_group}")
+            return output
+
+        finally:
+            # Clean up temporary files
+            output_dir = str(Path(output).parent)
+            self._cleanup_temp_files(output_dir)
+
+    def remove_pbc(self,
                    trajectory: str,
                    topology: str,
                    output: str,
                    center_group: Optional[str] = None,
                    output_group: Optional[str] = None,
                    fit_group: Optional[str] = None,
-                   dt: Optional[float] = None) -> str:
+                   dt: Optional[float] = None,
+                   use_nojump: bool = False) -> str:
         """
         Remove PBC using three-step process: center -> pbc whole -> fit rot+trans.
-        
+
+        Note: The 2-step method (remove_pbc_2step) is recommended for most cases.
+        Use this 3-step method only when you specifically need centering and whole operations.
+
         Args:
             trajectory: Input trajectory file (.xtc or .trr)
             topology: Topology file (.tpr or .gro)
@@ -104,7 +187,8 @@ class PBCProcessor:
             output_group: Group to output (default: System)
             fit_group: Group for fitting rot+trans (default: Protein)
             dt: Time interval for frame sampling in ps (default: no downsampling)
-            
+            use_nojump: Enable -pbc nojump to prevent atom jumps across boundaries
+
         Returns:
             Path to output file
         """
@@ -125,19 +209,20 @@ class PBCProcessor:
         temp_whole = self._register_temp_file(str(Path(output).with_suffix('.temp_whole.xtc')))
         
         try:
-            # Step 1: Center trajectory with PBC atom
+            # Step 1: Center trajectory with PBC
+            pbc_method = "nojump" if use_nojump else "atom"
             if dt is not None:
-                logger.info(f"Step 1: Centering trajectory (center pbc atom) with dt={dt} ps")
+                logger.info(f"Step 1: Centering trajectory (center pbc {pbc_method}) with dt={dt} ps")
             else:
-                logger.info("Step 1: Centering trajectory (center pbc atom)")
-            
+                logger.info(f"Step 1: Centering trajectory (center pbc {pbc_method})")
+
             center_cmd = [
                 "trjconv",
                 "-f", trajectory,
                 "-s", topology,
                 "-o", temp_centered,
                 "-center",
-                "-pbc", "atom"
+                "-pbc", pbc_method
             ]
             
             # Add index file if shortest chain is available
@@ -201,113 +286,121 @@ class PBCProcessor:
             # Clean up all registered temporary files and apply pattern cleanup
             output_dir = str(Path(output).parent)
             self._cleanup_temp_files(output_dir)
-    
-    def extract_frames(self,
-                      trajectory: str,
-                      topology: str,
-                      output: str,
-                      start_time: Optional[float] = None,
-                      end_time: Optional[float] = None,
-                      step: Optional[int] = None) -> str:
-        """
-        Extract specific frames from trajectory.
-        
-        Args:
-            trajectory: Input trajectory file
-            topology: Topology file
-            output: Output trajectory file
-            start_time: Start time in ps
-            end_time: End time in ps
-            step: Frame step interval
-            
-        Returns:
-            Path to output file
-        """
-        cmd = [
-            "trjconv",
-            "-f", trajectory,
-            "-s", topology,
-            "-o", output
-        ]
-        
-        if start_time is not None:
-            cmd.extend(["-b", str(start_time)])
-        if end_time is not None:
-            cmd.extend(["-e", str(end_time)])
-        if step is not None:
-            cmd.extend(["-skip", str(step)])
-        
-        stdin_input = "0\n"
-        self._run_gmx_command(cmd, stdin_input=stdin_input)
-        
-        logger.info(f"Extracted frames saved to: {output}")
-        return output
-    
+
     def comprehensive_pbc_process(self,
                                 trajectory: str,
                                 topology: str,
                                 output_dir: str,
+                                method: str = "2step",
                                 center_group: Optional[str] = None,
                                 fit_group: Optional[str] = None,
-                                dt: Optional[float] = None) -> Dict[str, str]:
+                                dt: Optional[float] = None,
+                                auto_dt: bool = True,
+                                use_nojump: bool = True) -> Dict[str, str]:
         """
-        Comprehensive PBC processing workflow using the new three-step process.
-        
+        Comprehensive PBC processing workflow.
+
         Args:
             trajectory: Input trajectory file
             topology: Topology file
             output_dir: Output directory
-            center_group: Group for centering (default: auto-select)
+            method: PBC processing method (default: "2step")
+                - "2step": nojump -> fit (recommended, based on empirical experience)
+                - "3step": center -> whole -> fit (standard GROMACS workflow)
+            center_group: Group for centering (only for 3step, default: auto-select)
             fit_group: Group for fitting (default: auto-select)
-            dt: Time interval for frame sampling in ps (default: no downsampling)
-            
+            dt: Time interval for frame sampling in ps (default: 100 ps)
+            auto_dt: Automatically use default dt=100ps (default: True)
+            use_nojump: Enable -pbc nojump in 3step method (default: True, only for 3step)
+
         Returns:
             Dictionary with paths to output files
+
+        Note:
+            The 2-step method is recommended for large complexes (e.g., TCR-pMHC)
+            based on empirical experience. It avoids potential issues with centering
+            and whole operations while effectively removing PBC artifacts.
+
+            Standard: 100 ns trajectory -> 1000 frames (dt = 100 ps)
         """
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
-        
+
         base_name = Path(trajectory).stem
-        
+
         # Initialize group selector
         if self.group_selector is None:
             self.group_selector = GroupSelector(topology, self.gmx)
-        
-        # Auto-select groups if not provided
-        if center_group is None:
-            center_group = self.group_selector.select_group("center_protein")
+
+        # Validate method
+        if method not in ["2step", "3step"]:
+            raise ValueError(f"Invalid method: {method}. Must be '2step' or '3step'")
+
+        # Auto-calculate dt if not provided
+        if dt is None and auto_dt:
+            dt = 100.0
+            logger.info(f"Using default dt={dt} ps for downsampling (targets ~1000 frames per 100 ns)")
+            logger.info(f"  To disable downsampling, use --no-auto-dt")
+            logger.info(f"  To customize, use --dt <value_in_ps>")
+
+        # Auto-select fit group if not provided
         if fit_group is None:
             fit_group = self.group_selector.select_group("fit_backbone")
-        
-        # Use the new three-step PBC removal process
+
+        # Prepare output file
         processed_file = output_path / f"{base_name}_processed.xtc"
-        
+
         logger.info(f"Starting comprehensive PBC processing for {trajectory}")
+        logger.info(f"PBC processing method: {method}")
         if dt is not None:
             logger.info(f"Using dt={dt} ps for trajectory downsampling")
-        logger.info(f"Using groups - Center: {center_group}, Fit: {fit_group}")
-        
-        final_trajectory = self.remove_pbc(
-            trajectory=trajectory,
-            topology=topology,
-            output=str(processed_file),
-            center_group=center_group,
-            fit_group=fit_group,
-            dt=dt
-        )
-        
+
+        # Execute processing based on method
+        if method == "2step":
+            logger.info("Using 2-step method: nojump -> fit (recommended)")
+            logger.info(f"Using groups - Fit: {fit_group}")
+
+            final_trajectory = self.remove_pbc_2step(
+                trajectory=trajectory,
+                topology=topology,
+                output=str(processed_file),
+                fit_group=fit_group,
+                dt=dt
+            )
+        else:  # 3step
+            # Auto-select center group for 3step
+            if center_group is None:
+                center_group = self.group_selector.select_group("center_protein")
+
+            logger.info("Using 3-step method: center -> whole -> fit")
+            logger.info(f"Using groups - Center: {center_group}, Fit: {fit_group}")
+
+            final_trajectory = self.remove_pbc(
+                trajectory=trajectory,
+                topology=topology,
+                output=str(processed_file),
+                center_group=center_group,
+                fit_group=fit_group,
+                dt=dt,
+                use_nojump=use_nojump
+            )
+
         # Copy reference files (md.tpr and md.gro) for RMSD calculation and visualization
         copied_files = self._copy_reference_files(trajectory, topology, output_path)
 
         results = {
             "processed": final_trajectory,
-            "center_group": center_group,
+            "method": method,
             "fit_group": fit_group,
             "output_directory": str(output_path),
             "reference_structures": copied_files["gro_files"],
             "reference_topology": copied_files["tpr_file"]
         }
-        
+
+        # Add center_group for 3step method
+        if method == "3step":
+            results["center_group"] = center_group
+
         logger.info(f"Comprehensive PBC processing completed in: {output_dir}")
         return results
     

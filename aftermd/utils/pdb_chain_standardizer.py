@@ -26,6 +26,13 @@ from dataclasses import dataclass
 import csv
 import logging
 
+try:
+    from .intelligent_chain_identifier import IntelligentChainIdentifier
+    INTELLIGENT_IDENTIFIER_AVAILABLE = True
+except ImportError:
+    INTELLIGENT_IDENTIFIER_AVAILABLE = False
+    IntelligentChainIdentifier = None
+
 __all__ = ['PDBChainStandardizer', 'ChainInfo', 'StandardizationResult']
 
 
@@ -111,6 +118,7 @@ class PDBChainStandardizer:
         standard_order: Optional[List[str]] = None,
         expected_chain_count: int = 5,
         max_residue_threshold: int = 1000,
+        use_intelligent_identification: bool = False,
         logger: Optional[logging.Logger] = None
     ):
         """
@@ -120,12 +128,37 @@ class PDBChainStandardizer:
             standard_order: List of chain IDs in desired order (default: ['C', 'B', 'D', 'E', 'A'])
             expected_chain_count: Expected number of chains (default: 5 for pHLA-TCR)
             max_residue_threshold: Max residues to consider as protein, filters solvent (default: 1000)
+            use_intelligent_identification: Use ANARCI-based intelligent chain identification (default: False)
             logger: Custom logger instance (optional)
         """
         self.standard_order = standard_order or ['C', 'B', 'D', 'E', 'A']
         self.expected_chain_count = expected_chain_count
         self.max_residue_threshold = max_residue_threshold
+        self.use_intelligent_identification = use_intelligent_identification
         self.logger = logger or self._setup_default_logger()
+
+        # Initialize intelligent identifier if requested
+        if use_intelligent_identification:
+            if not INTELLIGENT_IDENTIFIER_AVAILABLE:
+                self.logger.warning(
+                    "Intelligent chain identification requested but module not available. "
+                    "Falling back to length-based identification."
+                )
+                self.use_intelligent_identification = False
+                self.intelligent_identifier = None
+            else:
+                try:
+                    self.intelligent_identifier = IntelligentChainIdentifier(use_anarci=True)
+                    self.logger.info("Intelligent chain identification enabled (ANARCI-based)")
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to initialize intelligent identifier: {e}. "
+                        "Falling back to length-based identification."
+                    )
+                    self.use_intelligent_identification = False
+                    self.intelligent_identifier = None
+        else:
+            self.intelligent_identifier = None
 
     def _setup_default_logger(self) -> logging.Logger:
         """Set up default logger for the class."""
@@ -205,10 +238,81 @@ class PDBChainStandardizer:
 
     def create_mapping(
         self,
+        input_pdb: Union[str, Path],
+        chain_list: Optional[List[ChainInfo]] = None
+    ) -> Tuple[Dict[str, str], str]:
+        """
+        Create chain ID mapping using intelligent or length-based method.
+
+        If intelligent identification is enabled, uses ANARCI to identify TCR chains.
+        Otherwise, falls back to simple residue count ordering.
+
+        Args:
+            input_pdb: Path to input PDB file (required for intelligent mode)
+            chain_list: Optional pre-analyzed chain list (for length-based mode)
+
+        Returns:
+            Tuple of:
+                - Dictionary mapping old chain IDs to new chain IDs
+                - Status string: "OK", "MULTICHAIN", "INSUFFICIENT", or "ERROR"
+        """
+        # Use intelligent identification if enabled
+        if self.use_intelligent_identification and self.intelligent_identifier:
+            try:
+                return self._create_mapping_intelligent(input_pdb)
+            except Exception as e:
+                self.logger.warning(
+                    f"Intelligent identification failed: {e}. "
+                    "Falling back to length-based method."
+                )
+                # Fall through to length-based method
+
+        # Fall back to length-based method
+        return self._create_mapping_by_length(chain_list)
+
+    def _create_mapping_intelligent(
+        self,
+        input_pdb: Union[str, Path]
+    ) -> Tuple[Dict[str, str], str]:
+        """
+        Create mapping using ANARCI-based intelligent identification.
+
+        Args:
+            input_pdb: Path to input PDB file
+
+        Returns:
+            Tuple of (mapping dict, status string)
+        """
+        # Use intelligent identifier
+        identifications = self.intelligent_identifier.identify_chains(str(input_pdb))
+
+        if len(identifications) != self.expected_chain_count:
+            self.logger.warning(
+                f"Expected {self.expected_chain_count} chains, identified {len(identifications)}"
+            )
+            if len(identifications) > self.expected_chain_count:
+                return {}, "MULTICHAIN"
+            else:
+                return {}, "INSUFFICIENT"
+
+        # Create mapping from identifications
+        mapping = self.intelligent_identifier.create_standardization_mapping(identifications)
+
+        # Log confidence scores
+        for chain_id, info in identifications.items():
+            self.logger.info(
+                f"  {chain_id} → {mapping.get(chain_id, '?')}: "
+                f"{info.chain_type} ({info.length} aa, confidence={info.confidence:.2f})"
+            )
+
+        return mapping, "OK"
+
+    def _create_mapping_by_length(
+        self,
         chain_list: List[ChainInfo]
     ) -> Tuple[Dict[str, str], str]:
         """
-        Create chain ID mapping based on residue count ordering.
+        Create mapping based on residue count ordering (legacy method).
 
         Maps original chain IDs to standard chain IDs according to the predefined
         standard_order, based on residue count (smallest to largest).
@@ -219,13 +323,7 @@ class PDBChainStandardizer:
         Returns:
             Tuple of:
                 - Dictionary mapping old chain IDs to new chain IDs
-                - Status string: "OK", "MULTICHAIN" (too many chains), or
-                  "INSUFFICIENT" (too few chains)
-
-        Example:
-            >>> chains = [ChainInfo('X', 10, 100), ChainInfo('Y', 100, 800), ...]
-            >>> mapping, status = standardizer.create_mapping(chains)
-            >>> print(mapping)  # {'X': 'C', 'Y': 'B', ...}
+                - Status string: "OK", "MULTICHAIN", or "INSUFFICIENT"
         """
         num_chains = len(chain_list)
 
@@ -382,8 +480,8 @@ class PDBChainStandardizer:
                     f"{chain_info.atom_count:4d} atoms"
                 )
 
-            # Create mapping
-            chain_mapping, status = self.create_mapping(chain_list)
+            # Create mapping (intelligent or length-based)
+            chain_mapping, status = self.create_mapping(input_pdb, chain_list)
             result.chain_mapping = chain_mapping
             result.status = status
 

@@ -345,13 +345,226 @@ find /output/dir -name "md_processed.xtc" | wc -l
 
 ## 📊 高级分析
 
-### RMSD 分析
-```python
-from aftermd.analysis import RMSDCalculator
+### RMSD 完整分析流程
 
-rmsd_calc = RMSDCalculator(trajectory, topology)
-rmsd_data = rmsd_calc.calculate_backbone_rmsd()
+RMSD (Root Mean Square Deviation) 是评估蛋白质结构稳定性和构象变化的关键指标。
+
+#### 1️⃣ 准备工作：PBC处理（必须）
+
+**为什么必须先处理PBC？**
+- ❌ 未处理：RMSD异常高（4-6 nm），无法使用
+- ✅ 已处理：RMSD正常（0.2-0.5 nm），结果可信
+
+```bash
+# 使用AfterMD自动PBC处理 + dt采样
+python scripts/pbc_process.py -f md.xtc -s md.tpr -o processed/
+
+# 输出：processed/md_processed.xtc (已优化，dt=100ps，~1000帧/100ns)
 ```
+
+#### 2️⃣ RMSD计算
+
+**方法一：GROMACS方法（推荐，快速稳定）**
+
+```python
+from aftermd.analysis.trajectory import RMSDCalculator
+
+# 初始化计算器
+calc = RMSDCalculator(
+    topology="processed/md.tpr",
+    trajectory="processed/md_processed.xtc"
+)
+
+# 自动选择Backbone组进行RMSD计算
+calc.calculate_gromacs(
+    rmsd_type="backbone",      # 选项: backbone, calpha, protein
+    output_file="rmsd_backbone.xvg"
+)
+
+# 或使用C-alpha原子
+calc.calculate_gromacs(
+    rmsd_type="calpha",
+    output_file="rmsd_calpha.xvg"
+)
+```
+
+**关键参数说明：**
+- **参考帧**：默认使用.tpr文件中的结构（通常是能量最小化后的初始结构）
+- **拟合方式**：自动进行rot+trans拟合（消除整体旋转和平移）
+- **原子选择**：
+  - `backbone`: N, CA, C原子（2496原子）
+  - `calpha`: 仅CA原子（832原子）
+  - `protein`: 所有蛋白质原子（13095原子）
+
+**方法二：命令行快速计算**
+
+```bash
+# 直接使用测试脚本
+python scripts/test_rmsd_calculation.py
+
+# 输出3个RMSD文件：
+# - rmsd_backbone.xvg
+# - rmsd_calpha.xvg
+# - rmsd_protein.xvg
+```
+
+#### 3️⃣ RMSD可视化和分析
+
+**基础绘图**
+
+```python
+from aftermd.utils.plotting import PlotManager
+
+plotter = PlotManager(figsize=(12, 6))
+
+# 单轨迹RMSD曲线 + 移动平均
+plotter.plot_rmsd(
+    rmsd_file="rmsd_backbone.xvg",
+    title="Backbone RMSD Analysis",
+    output_path="rmsd_plot.png",
+    show_stats=True,           # 显示统计信息（均值±标准差）
+    moving_average=50          # 50帧移动平均
+)
+
+# 多轨迹对比
+plotter.plot_rmsd(
+    rmsd_file=["rmsd_backbone.xvg", "rmsd_calpha.xvg", "rmsd_protein.xvg"],
+    title="RMSD Comparison",
+    output_path="rmsd_comparison.png",
+    show_stats=True
+)
+
+# RMSD分布直方图
+plotter.plot_rmsd_distribution(
+    rmsd_file="rmsd_backbone.xvg",
+    output_path="rmsd_distribution.png",
+    bins=50,
+    show_kde=True              # 显示核密度估计（需要scipy）
+)
+
+# 收敛性分析
+plotter.plot_rmsd_convergence(
+    rmsd_file="rmsd_backbone.xvg",
+    window_sizes=[50, 100, 200, 500],
+    output_path="rmsd_convergence.png"
+)
+```
+
+**高级分析：检测构象转变**
+
+```python
+from aftermd.analysis.trajectory.rmsd_analyzer import RMSDAnalyzer
+
+# 初始化分析器
+analyzer = RMSDAnalyzer("rmsd_backbone.xvg")
+
+# 生成综合分析报告
+report = analyzer.generate_report(output_file="rmsd_analysis_report.txt")
+print(report)
+
+# 检测构象转变
+transitions = analyzer.detect_transitions()
+for trans in transitions:
+    print(f"转变点：{trans['time_ns']:.1f} ns")
+    print(f"  RMSD: {trans['rmsd_before']:.2f} → {trans['rmsd_after']:.2f} nm")
+
+# 识别稳定构象区域
+stable_regions = analyzer.identify_stable_regions()
+for start, end, mean_rmsd in stable_regions:
+    print(f"稳定区域：{start}-{end}帧，平均RMSD={mean_rmsd:.2f} nm")
+
+# 标记异常值（区分伪影vs真实构象变化）
+outliers = analyzer.flag_outliers(z_score_threshold=2.5)
+classification = analyzer.classify_outliers(
+    outliers['high_outliers'],
+    consecutive_threshold=10
+)
+
+print(f"检测到的构象变化: {len(classification['conformational_changes'])}")
+print(f"可能的伪影: {len(classification['artifacts'])}")
+```
+
+#### 4️⃣ 完整示例：从PBC到分析报告
+
+```python
+from aftermd.preprocessing import PBCProcessor
+from aftermd.analysis.trajectory import RMSDCalculator
+from aftermd.analysis.trajectory.rmsd_analyzer import RMSDAnalyzer
+from aftermd.utils.plotting import PlotManager
+
+# Step 1: PBC处理（自动dt=100ps采样）
+pbc = PBCProcessor()
+pbc.comprehensive_pbc_process(
+    trajectory="md.xtc",
+    topology="md.tpr",
+    output_dir="processed"
+)
+
+# Step 2: RMSD计算
+calc = RMSDCalculator(
+    topology="processed/md.tpr",
+    trajectory="processed/md_processed.xtc"
+)
+calc.calculate_gromacs(
+    rmsd_type="backbone",
+    output_file="processed/rmsd_backbone.xvg"
+)
+
+# Step 3: 高级分析
+analyzer = RMSDAnalyzer("processed/rmsd_backbone.xvg")
+report = analyzer.generate_report("processed/rmsd_report.txt")
+
+# Step 4: 可视化
+plotter = PlotManager()
+plotter.plot_rmsd(
+    rmsd_file="processed/rmsd_backbone.xvg",
+    output_path="processed/rmsd_analysis.png",
+    show_stats=True,
+    moving_average=50
+)
+plotter.plot_rmsd_convergence(
+    rmsd_file="processed/rmsd_backbone.xvg",
+    output_path="processed/rmsd_convergence.png"
+)
+
+print("RMSD分析完成！")
+print(f"报告: processed/rmsd_report.txt")
+print(f"图片: processed/rmsd_analysis.png")
+```
+
+#### 5️⃣ RMSD结果解读
+
+**正常范围：**
+- **稳定蛋白**：0.1-0.3 nm（主链紧密维持原始结构）
+- **中等灵活**：0.3-0.5 nm（允许小幅度构象调整）
+- **较大变化**：0.5-1.0 nm（显著构象改变）
+- **解折叠/解离**：>1.0 nm（结构大幅偏离）
+
+**特殊情况：**
+- **RMSD持续上升**：蛋白未达到稳定构象，需要延长模拟
+- **RMSD突然跳跃后稳定**：构象转变（如域翻转、环区重排）
+- **RMSD周期性波动**：可能存在多个亚稳态构象
+- **RMSD异常高（>3 nm）**：
+  - 检查PBC是否正确处理
+  - 可能是真实的展开/解离事件（用RMSDAnalyzer确认）
+
+#### 6️⃣ 常见问题
+
+**Q: RMSD值很大（>5 nm），是否需要修正？**
+A: **不要修正！** 使用`RMSDAnalyzer`分析：
+- 如果是持续高RMSD（>10帧）→ 真实的构象变化
+- 如果是孤立尖峰（1-2帧）→ 可能是伪影，但通常影响很小
+
+**Q: 如何选择backbone vs calpha vs protein？**
+A:
+- **Backbone**（推荐）：平衡灵敏度和稳定性，最常用
+- **C-alpha**：更平滑，忽略侧链影响
+- **Protein**：包含侧链，对局部变化更敏感
+
+**Q: 如何判断模拟是否收敛？**
+A: 使用`plot_rmsd_convergence()`，检查：
+- 累积均值是否稳定在±5%范围内
+- 移动平均曲线是否趋于水平
 
 ### 径向分布函数
 ```python
@@ -359,24 +572,6 @@ from aftermd.analysis import RDFCalculator
 
 rdf_calc = RDFCalculator(trajectory, topology)
 rdf_data = rdf_calc.calculate_protein_water_rdf()
-```
-
-### 自定义分析流程
-```python
-from aftermd.preprocessing import PBCProcessor
-from aftermd.analysis import RMSDCalculator, RDFCalculator
-
-# 1. PBC 处理
-pbc = PBCProcessor()
-processed_traj = pbc.remove_pbc(trajectory, topology, output)
-
-# 2. 多种分析
-rmsd = RMSDCalculator(processed_traj, topology)
-rdf = RDFCalculator(processed_traj, topology)
-
-# 3. 生成结果
-rmsd_data = rmsd.calculate_backbone_rmsd()
-rdf_data = rdf.calculate_protein_water_rdf()
 ```
 
 ## 🖥️ 集群使用示例

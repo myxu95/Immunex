@@ -1,11 +1,20 @@
 import numpy as np
 import pandas as pd
-import MDAnalysis as mda
-from MDAnalysis.analysis import rms, align
 import subprocess
 from typing import Optional, Tuple
 import logging
 from ...utils.group_selector import GroupSelector
+
+# Optional MDAnalysis import
+try:
+    import MDAnalysis as mda
+    from MDAnalysis.analysis import rms, align
+    HAS_MDANALYSIS = True
+except ImportError:
+    HAS_MDANALYSIS = False
+    mda = None
+    rms = None
+    align = None
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +25,7 @@ class RMSDCalculator:
     def __init__(self, topology: str, trajectory: str, gmx_executable: str = "gmx"):
         """
         Initialize RMSDCalculator.
-        
+
         Args:
             topology: Topology file (.tpr, .gro, .pdb)
             trajectory: Trajectory file (.xtc, .trr)
@@ -25,16 +34,21 @@ class RMSDCalculator:
         self.topology = topology
         self.trajectory = trajectory
         self.gmx = gmx_executable
-        
+
         # Initialize group selector
         self.group_selector = GroupSelector(topology, gmx_executable)
-        
-        try:
-            self.universe = mda.Universe(topology, trajectory)
-            logger.info(f"RMSD Calculator initialized with {len(self.universe.trajectory)} frames")
-        except Exception as e:
-            logger.error(f"Failed to load trajectory for RMSD: {e}")
-            raise
+
+        # Load MDAnalysis universe if available
+        self.universe = None
+        if HAS_MDANALYSIS:
+            try:
+                self.universe = mda.Universe(topology, trajectory)
+                logger.info(f"RMSD Calculator initialized with {len(self.universe.trajectory)} frames (MDAnalysis available)")
+            except Exception as e:
+                logger.warning(f"Failed to load trajectory with MDAnalysis: {e}")
+                logger.info("MDAnalysis methods will not be available, but GROMACS methods will work")
+        else:
+            logger.info("RMSD Calculator initialized (MDAnalysis not available, GROMACS methods only)")
     
     def calculate_mdanalysis(self,
                            selection: str = "protein and name CA",
@@ -50,7 +64,13 @@ class RMSDCalculator:
 
         Returns:
             Tuple of (time, rmsd) arrays
+
+        Raises:
+            RuntimeError: If MDAnalysis is not available
         """
+        if not HAS_MDANALYSIS or self.universe is None:
+            raise RuntimeError("MDAnalysis is not available or Universe failed to load. Use calculate_gromacs() instead.")
+
         atoms = self.universe.select_atoms(selection)
 
         # Set reference frame and store reference coordinates

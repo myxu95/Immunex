@@ -1,8 +1,11 @@
 from .rmsd import RMSDCalculator
+from .rmsd_interface import RMSDInterface
 from .rdf import RDFCalculator
 from .radius_gyration import RadiusGyrationCalculator
 from .distance import DistanceCalculator
 from .hydrogen_bonds import HydrogenBondAnalyzer
+from .contact_number import ContactNumberCalculator
+from .buried_sasa import BuriedSASACalculator
 
 # RMSF analysis modules
 from .rmsf import (
@@ -20,10 +23,13 @@ from .complex_angle_analyzer import ComplexAngleAnalyzer
 
 __all__ = [
     "RMSDCalculator",
+    "RMSDInterface",
     "RDFCalculator",
     "RadiusGyrationCalculator",
     "DistanceCalculator",
     "HydrogenBondAnalyzer",
+    "ContactNumberCalculator",
+    "BuriedSASACalculator",
     "RMSFAnalyzer",
     "extract_sequence_from_topology",
     "find_subsequence_position",

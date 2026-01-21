@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 import argparse
 
-from phla_tcr_analyzer import pHLATCRAnalyzer
+from aftermd.analysis.trajectory import pHLATCRAnalyzer
 
 logging.basicConfig(
     level=logging.INFO,
