@@ -684,3 +684,202 @@ class PDBChainStandardizer:
 
         except Exception as e:
             return False, f"Validation error: {str(e)}"
+
+    def _standardize_protein_only(
+        self,
+        input_pdb: Union[str, Path],
+        output_pdb: Union[str, Path],
+        chain_mapping: Dict[str, str]
+    ) -> None:
+        """
+        Standardize PDB keeping only protein chains.
+
+        Args:
+            input_pdb: Input PDB file
+            output_pdb: Output PDB file (protein only)
+            chain_mapping: Dictionary mapping old chain IDs to new chain IDs
+        """
+        input_pdb = Path(input_pdb)
+        output_pdb = Path(output_pdb)
+
+        output_pdb.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(input_pdb) as f_in, open(output_pdb, 'w') as f_out:
+            for line in f_in:
+                if line.startswith('ATOM') or line.startswith('HETATM'):
+                    chain_id = line[21]
+
+                    # Only process protein chains
+                    if chain_id in chain_mapping:
+                        new_chain = chain_mapping[chain_id]
+                        new_line = line[:21] + new_chain + line[22:]
+                        f_out.write(new_line)
+                    # Skip water, ions, and other non-protein atoms
+
+                elif line.startswith(('CRYST1', 'MODEL', 'ENDMDL', 'END')):
+                    # Preserve structural information
+                    f_out.write(line)
+
+    def _standardize_with_solvent(
+        self,
+        input_pdb: Union[str, Path],
+        output_pdb: Union[str, Path],
+        chain_mapping: Dict[str, str]
+    ) -> None:
+        """
+        Standardize PDB keeping all atoms (protein + solvent + ions).
+
+        Args:
+            input_pdb: Input PDB file
+            output_pdb: Output PDB file (full system)
+            chain_mapping: Dictionary mapping old chain IDs to new chain IDs
+        """
+        input_pdb = Path(input_pdb)
+        output_pdb = Path(output_pdb)
+
+        output_pdb.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(input_pdb) as f_in, open(output_pdb, 'w') as f_out:
+            for line in f_in:
+                if line.startswith('ATOM') or line.startswith('HETATM'):
+                    chain_id = line[21]
+
+                    if chain_id in chain_mapping:
+                        # Standardize protein chain IDs
+                        new_chain = chain_mapping[chain_id]
+                        new_line = line[:21] + new_chain + line[22:]
+                        f_out.write(new_line)
+                    else:
+                        # Keep water, ions unchanged
+                        f_out.write(line)
+                else:
+                    # Preserve all other records
+                    f_out.write(line)
+
+    def process_single_dual_output(
+        self,
+        input_pdb: Union[str, Path],
+        output_prefix: Union[str, Path],
+        task_name: Optional[str] = None,
+        skip_if_standard: bool = True
+    ) -> Dict[str, StandardizationResult]:
+        """
+        Process single PDB file and generate two standardized versions.
+
+        Generates:
+        1. {output_prefix}_protein.pdb - Protein only (standardized chains)
+        2. {output_prefix}_full.pdb - Full system (standardized protein chains, preserved solvent)
+
+        Args:
+            input_pdb: Input PDB file path
+            output_prefix: Output file prefix (e.g., "1ao7_std")
+            task_name: Optional task name for tracking
+            skip_if_standard: Skip processing if already standardized
+
+        Returns:
+            Dictionary with keys 'protein' and 'full', each containing StandardizationResult
+
+        Example:
+            >>> standardizer = PDBChainStandardizer()
+            >>> results = standardizer.process_single_dual_output(
+            ...     input_pdb="complex.pdb",
+            ...     output_prefix="complex_std"
+            ... )
+            >>> print(f"Protein: {results['protein'].status}")
+            >>> print(f"Full: {results['full'].status}")
+            >>> print(f"Chain mapping: {results['protein'].chain_mapping}")
+        """
+        input_pdb = Path(input_pdb)
+        output_prefix = Path(output_prefix)
+        task_name = task_name or input_pdb.stem
+
+        start_time = datetime.now()
+
+        # Output files
+        output_protein = output_prefix.parent / f"{output_prefix.name}_protein.pdb"
+        output_full = output_prefix.parent / f"{output_prefix.name}_full.pdb"
+
+        # Initialize results
+        result_protein = StandardizationResult(
+            task_name=f"{task_name}_protein",
+            status="UNKNOWN",
+            num_chains=0,
+            chain_mapping={},
+            input_file=input_pdb,
+            output_file=output_protein
+        )
+
+        result_full = StandardizationResult(
+            task_name=f"{task_name}_full",
+            status="UNKNOWN",
+            num_chains=0,
+            chain_mapping={},
+            input_file=input_pdb,
+            output_file=output_full
+        )
+
+        try:
+            # Check if input exists
+            if not input_pdb.exists():
+                error_msg = f"PDB file not found: {input_pdb}"
+                result_protein.status = result_full.status = "NO_PDB"
+                result_protein.error_message = result_full.error_message = error_msg
+                self.logger.error(error_msg)
+                return {'protein': result_protein, 'full': result_full}
+
+            # Analyze chains
+            chain_list = self.analyze_chains(input_pdb)
+            num_chains = len(chain_list)
+
+            result_protein.num_chains = result_full.num_chains = num_chains
+
+            # Check chain count
+            if num_chains != self.expected_chain_count:
+                self.logger.warning(
+                    f"Expected {self.expected_chain_count} chains, found {num_chains}"
+                )
+
+            # Create chain mapping
+            chain_mapping, method = self.create_mapping(input_pdb, chain_list)
+
+            result_protein.chain_mapping = result_full.chain_mapping = chain_mapping
+
+            # Check if already standardized
+            if skip_if_standard and self._is_already_standard(chain_mapping):
+                result_protein.status = result_full.status = "ALREADY_STANDARD"
+                self.logger.info(f"PDB already in standard format: {input_pdb.name}")
+                return {'protein': result_protein, 'full': result_full}
+
+            # Generate protein-only version
+            self._standardize_protein_only(input_pdb, output_protein, chain_mapping)
+            result_protein.status = "OK"
+            self.logger.info(f"Generated protein-only PDB: {output_protein.name}")
+
+            # Generate full version
+            self._standardize_with_solvent(input_pdb, output_full, chain_mapping)
+            result_full.status = "OK"
+            self.logger.info(f"Generated full system PDB: {output_full.name}")
+
+            # Record processing time
+            processing_time = (datetime.now() - start_time).total_seconds()
+            result_protein.processing_time = result_full.processing_time = processing_time
+
+            self.logger.info(
+                f"\n✓ Dual output completed for {task_name}:\n"
+                f"  - Protein-only: {output_protein}\n"
+                f"  - Full system: {output_full}\n"
+                f"  - Chain mapping: {chain_mapping}\n"
+                f"  - Processing time: {processing_time:.2f}s"
+            )
+
+        except Exception as e:
+            error_msg = f"Failed to process {input_pdb.name}: {str(e)}"
+            result_protein.status = result_full.status = "ERROR"
+            result_protein.error_message = result_full.error_message = error_msg
+            self.logger.error(error_msg)
+
+        return {'protein': result_protein, 'full': result_full}
+
+    def _is_already_standard(self, chain_mapping: Dict[str, str]) -> bool:
+        """Check if chain mapping indicates already standardized chains."""
+        return all(old == new for old, new in chain_mapping.items())

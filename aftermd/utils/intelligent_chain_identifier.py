@@ -33,26 +33,26 @@ class IntelligentChainIdentifier:
     """
     Intelligent chain identifier using ANARCI and length heuristics.
 
-    Identification strategy:
-    1. Identify peptide by length (shortest, typically 5-22 aa)
-    2. Identify beta2-microglobulin by length (~99-100 aa)
-    3. Use ANARCI to identify remaining 3 chains:
-       - 2 TCR chains (alpha and beta)
-       - 1 HLA-alpha chain (longest)
+    NEW IDENTIFICATION STRATEGY (2026-01-22):
+    1. Identify peptide by length (<=20 AA) - DEFINITIVE
+    2. Identify beta2-microglobulin by length (90-110 AA) - DEFINITIVE
+    3. Send remaining 3 chains to ANARCI:
+       - ANARCI identifies TCR-alpha and TCR-beta
+       - Remaining chain is HLA-alpha
 
     Standard chain assignment:
-    - Chain A: HLA-alpha (longest)
-    - Chain B: beta2-microglobulin (~100 aa)
-    - Chain C: Peptide (shortest)
-    - Chain D: TCR-alpha
-    - Chain E: TCR-beta
+    - Chain A: HLA-alpha (identified by elimination)
+    - Chain B: beta2-microglobulin (90-110 AA)
+    - Chain C: Peptide (<=20 AA)
+    - Chain D: TCR-alpha (ANARCI identification)
+    - Chain E: TCR-beta (ANARCI identification)
     """
 
-    # Length thresholds for identification
-    PEPTIDE_MAX_LENGTH = 25
-    BETA2M_MIN_LENGTH = 95
-    BETA2M_MAX_LENGTH = 105
-    HLA_ALPHA_MIN_LENGTH = 260
+    # Length thresholds for identification (NEW STRATEGY)
+    PEPTIDE_MAX_LENGTH = 20      # Peptide: <=20 AA (definitive)
+    BETA2M_MIN_LENGTH = 90       # Beta2m: ~100 AA (90-110 range)
+    BETA2M_MAX_LENGTH = 110
+    HLA_ALPHA_MIN_LENGTH = 260   # Not used in new strategy
 
     def __init__(self, use_anarci: bool = True):
         """
@@ -111,7 +111,7 @@ class IntelligentChainIdentifier:
 
         identifications = {}
 
-        # Step 3: Identify peptide (shortest)
+        # Step 3: Identify peptide (<=20 AA, definitive)
         peptide_chain_id, peptide_data = sorted_chains[0]
         if peptide_data['length'] <= self.PEPTIDE_MAX_LENGTH:
             identifications[peptide_chain_id] = ChainIdentification(
@@ -121,11 +121,11 @@ class IntelligentChainIdentifier:
                 chain_type='peptide',
                 confidence=1.0
             )
-            logger.info(f"Identified {peptide_chain_id} as peptide ({peptide_data['length']} aa)")
+            logger.info(f"[DEFINITIVE] {peptide_chain_id} = peptide ({peptide_data['length']} AA, <=20)")
         else:
             logger.warning(
-                f"Shortest chain {peptide_chain_id} has {peptide_data['length']} aa, "
-                f"exceeds peptide threshold ({self.PEPTIDE_MAX_LENGTH})"
+                f"Shortest chain {peptide_chain_id} has {peptide_data['length']} AA, "
+                f"exceeds peptide threshold (<=20 AA)"
             )
             identifications[peptide_chain_id] = ChainIdentification(
                 chain_id=peptide_chain_id,
@@ -135,7 +135,7 @@ class IntelligentChainIdentifier:
                 confidence=0.5
             )
 
-        # Step 4: Identify beta2-microglobulin (~100 aa)
+        # Step 4: Identify beta2-microglobulin (90-110 AA, definitive)
         beta2m_found = False
         for chain_id, chain_data in sorted_chains[1:]:
             if self.BETA2M_MIN_LENGTH <= chain_data['length'] <= self.BETA2M_MAX_LENGTH:
@@ -144,14 +144,14 @@ class IntelligentChainIdentifier:
                     length=chain_data['length'],
                     sequence=chain_data['sequence'],
                     chain_type='beta2m',
-                    confidence=0.95
+                    confidence=1.0
                 )
-                logger.info(f"Identified {chain_id} as beta2m ({chain_data['length']} aa)")
+                logger.info(f"[DEFINITIVE] {chain_id} = beta2m ({chain_data['length']} AA, 90-110 range)")
                 beta2m_found = True
                 break
 
         if not beta2m_found:
-            logger.warning("Could not identify beta2m chain by length heuristic")
+            logger.warning("Could not identify beta2m chain (expected 90-110 AA range)")
 
         # Step 5: Identify remaining chains using ANARCI
         remaining_chains = {
@@ -186,13 +186,13 @@ class IntelligentChainIdentifier:
         """
         Identify TCR alpha, TCR beta, and HLA-alpha from 3 remaining chains.
 
-        Strategy:
-        1. Use ANARCI to identify TCR chains
-        2. Longest chain is HLA-alpha
-        3. Distinguish TCR-alpha from TCR-beta using ANARCI output
+        NEW STRATEGY (2026-01-22):
+        1. Send all 3 chains to ANARCI for TCR identification
+        2. ANARCI should identify 2 TCR chains (alpha and beta)
+        3. The remaining chain (not identified as TCR) is HLA-alpha
 
         Args:
-            chains: Dictionary of 3 remaining chains
+            chains: Dictionary of 3 remaining chains (after peptide and beta2m removed)
 
         Returns:
             Dictionary of ChainIdentification results
@@ -204,6 +204,7 @@ class IntelligentChainIdentifier:
             return self._identify_by_length_fallback(chains)
 
         # Run ANARCI on all 3 chains
+        logger.info("Running ANARCI on 3 remaining chains to identify TCR...")
         anarci_results = {}
         for chain_id, chain_data in chains.items():
             try:
@@ -212,12 +213,13 @@ class IntelligentChainIdentifier:
                     chain_type='TCR'
                 )
                 anarci_results[chain_id] = result
+                chain_type_detected = result.get('chain_type', 'unknown')
                 logger.info(
-                    f"ANARCI result for {chain_id}: "
-                    f"chain_type={result.get('chain_type', 'unknown')}"
+                    f"  {chain_id} ({chain_data['length']} AA): "
+                    f"ANARCI result = {chain_type_detected}"
                 )
             except Exception as e:
-                logger.warning(f"ANARCI failed for chain {chain_id}: {e}")
+                logger.warning(f"  {chain_id}: ANARCI failed ({e})")
                 anarci_results[chain_id] = None
 
         # Identify chains based on ANARCI results
@@ -231,9 +233,11 @@ class IntelligentChainIdentifier:
             if result and 'chain_type' in result:
                 chain_type_anarci = result['chain_type'].lower()
 
-                if 'alpha' in chain_type_anarci and 'tcr' in chain_type_anarci:
+                # TCR alpha-like: TCR_alpha or TCR_delta
+                if ('alpha' in chain_type_anarci or 'delta' in chain_type_anarci) and 'tcr' in chain_type_anarci:
                     tcr_alpha_candidates.append((chain_id, chain_data, result))
-                elif 'beta' in chain_type_anarci and 'tcr' in chain_type_anarci:
+                # TCR beta-like: TCR_beta or TCR_gamma
+                elif ('beta' in chain_type_anarci or 'gamma' in chain_type_anarci) and 'tcr' in chain_type_anarci:
                     tcr_beta_candidates.append((chain_id, chain_data, result))
                 else:
                     # Likely HLA-alpha (ANARCI doesn't recognize it as TCR)
@@ -253,7 +257,7 @@ class IntelligentChainIdentifier:
                 confidence=0.95,
                 anarci_result=result
             )
-            logger.info(f"Identified {chain_id} as TCR-alpha (ANARCI)")
+            logger.info(f"[ANARCI] {chain_id} = TCR-alpha")
         elif len(tcr_alpha_candidates) > 1:
             logger.warning(f"Multiple TCR-alpha candidates: {[c[0] for c in tcr_alpha_candidates]}")
             # Use shortest as alpha
@@ -267,6 +271,7 @@ class IntelligentChainIdentifier:
                 confidence=0.7,
                 anarci_result=result
             )
+            logger.info(f"[ANARCI] {chain_id} = TCR-alpha (multiple candidates, using shortest)")
 
         # Assign TCR-beta
         if len(tcr_beta_candidates) == 1:
@@ -279,7 +284,7 @@ class IntelligentChainIdentifier:
                 confidence=0.95,
                 anarci_result=result
             )
-            logger.info(f"Identified {chain_id} as TCR-beta (ANARCI)")
+            logger.info(f"[ANARCI] {chain_id} = TCR-beta")
         elif len(tcr_beta_candidates) > 1:
             logger.warning(f"Multiple TCR-beta candidates: {[c[0] for c in tcr_beta_candidates]}")
             # Use longest as beta
@@ -293,8 +298,9 @@ class IntelligentChainIdentifier:
                 confidence=0.7,
                 anarci_result=result
             )
+            logger.info(f"[ANARCI] {chain_id} = TCR-beta (multiple candidates, using longest)")
 
-        # Assign HLA-alpha (remaining chain, should be longest)
+        # Assign HLA-alpha (remaining chain after TCR identification)
         remaining = [
             (cid, cdata) for cid, cdata in chains.items()
             if cid not in identifications
@@ -307,9 +313,9 @@ class IntelligentChainIdentifier:
                 length=chain_data['length'],
                 sequence=chain_data['sequence'],
                 chain_type='HLA_alpha',
-                confidence=0.9
+                confidence=0.95
             )
-            logger.info(f"Identified {chain_id} as HLA-alpha (longest remaining)")
+            logger.info(f"[ELIMINATION] {chain_id} = HLA-alpha (remaining after TCR identification)")
         elif len(remaining) > 1:
             # Multiple remaining - assign longest as HLA-alpha
             remaining.sort(key=lambda x: x[1]['length'], reverse=True)

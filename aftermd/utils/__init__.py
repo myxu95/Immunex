@@ -7,6 +7,11 @@ from .pdb_sequence_extractor import PDBSequenceExtractor, extract_sequences_from
 from .intelligent_chain_identifier import IntelligentChainIdentifier, ChainIdentification
 from .shortest_chain_detector import ShortestChainDetector, create_shortest_chain_index
 from .index_generator import IndexGenerator
+from .chain_based_index_generator import (
+    ChainBasedIndexGenerator,
+    generate_peptide_index_from_pdb,
+    generate_peptide_index_from_tpr
+)
 
 # CDR recognition and management
 from .cdr_manager import CDRManager, ANARCIWrapper, CDRIndexGenerator, CDRMetadataManager
@@ -30,6 +35,9 @@ __all__ = [
     "ShortestChainDetector",
     "create_shortest_chain_index",
     "IndexGenerator",
+    "ChainBasedIndexGenerator",
+    "generate_peptide_index_from_pdb",
+    "generate_peptide_index_from_tpr",
     "CDRManager",
     "ANARCIWrapper",
     "CDRIndexGenerator",

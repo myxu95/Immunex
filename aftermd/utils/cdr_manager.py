@@ -42,6 +42,10 @@ class ANARCIWrapper:
         """
         self.allow_fallback = allow_fallback
         self.numbering_scheme = numbering_scheme
+
+        # Fix PATH to include conda environment bin directory
+        self._setup_environment()
+
         self.anarci_available = self.validate_installation()
 
         if not self.anarci_available:
@@ -52,6 +56,19 @@ class ANARCIWrapper:
                     "ANARCI not installed and fallback disabled. "
                     "Install ANARCI: pip install anarci"
                 )
+
+    def _setup_environment(self):
+        """Setup environment variables for ANARCI execution."""
+        import os
+        import sys
+
+        # Add Python executable's directory to PATH (for hmmscan, ANARCI, etc.)
+        python_bin_dir = Path(sys.executable).parent
+        current_path = os.environ.get('PATH', '')
+
+        if str(python_bin_dir) not in current_path:
+            os.environ['PATH'] = str(python_bin_dir) + os.pathsep + current_path
+            logger.debug(f"Added {python_bin_dir} to PATH for ANARCI dependencies")
 
     def validate_installation(self) -> bool:
         """
@@ -138,9 +155,13 @@ class ANARCIWrapper:
 
             # ANARCI returns: ([[(numbering, start, end)]], [hit_tables], [details])
             numbering, start_pos, end_pos = results[0][0][0]
+            hit_table = results[2][0] if len(results) > 2 and results[2] else None
 
             # Parse CDR regions from numbering
             cdr_regions = self._parse_anarci_numbering(numbering, None)
+
+            # Determine chain type from hit table
+            chain_type_detected = self._determine_chain_type_from_hits(hit_table)
 
             return {
                 'method': 'anarci_python',
@@ -151,6 +172,8 @@ class ANARCIWrapper:
                 'numbering': numbering,
                 'start_pos': start_pos,
                 'end_pos': end_pos,
+                'chain_type': chain_type_detected,
+                'hit_table': hit_table,
                 'raw_output': str(results)
             }
 
@@ -199,6 +222,41 @@ class ANARCIWrapper:
         finally:
             # Cleanup
             Path(fasta_file).unlink(missing_ok=True)
+
+    def _determine_chain_type_from_hits(self, hit_table: List) -> str:
+        """
+        Determine TCR chain type from ANARCI hit table.
+
+        Args:
+            hit_table: ANARCI hit table with format:
+                [['id', 'description', 'evalue', ...],  # Header
+                 ['human_A', '', 1e-38, ...],           # Best hit
+                 ['mouse_B', '', 2e-37, ...]]           # Second hit
+
+        Returns:
+            Chain type: 'TCR_alpha', 'TCR_beta', 'TCR_delta', 'TCR_gamma', or 'unknown'
+        """
+        if not hit_table or len(hit_table) < 2:
+            return 'unknown'
+
+        # Get best hit (second row, first column)
+        best_hit_id = hit_table[1][0] if len(hit_table[1]) > 0 else ''
+
+        # Parse chain type from hit ID (e.g., 'human_A' -> A, 'mouse_B' -> B)
+        chain_letter = best_hit_id.split('_')[-1] if '_' in best_hit_id else ''
+
+        chain_type_mapping = {
+            'A': 'TCR_alpha',
+            'B': 'TCR_beta',
+            'D': 'TCR_delta',
+            'G': 'TCR_gamma'
+        }
+
+        detected_type = chain_type_mapping.get(chain_letter, 'unknown')
+
+        logger.debug(f"Hit ID '{best_hit_id}' -> chain type '{detected_type}'")
+
+        return detected_type
 
     def _parse_anarci_numbering(self, numbering: List, alignment_details: Any) -> Dict:
         """
