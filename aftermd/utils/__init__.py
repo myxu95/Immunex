@@ -4,6 +4,10 @@ from .path_manager import PathManager
 from .group_selector import GroupSelector
 from .pdb_chain_standardizer import PDBChainStandardizer, ChainInfo, StandardizationResult
 from .pdb_sequence_extractor import PDBSequenceExtractor, extract_sequences_from_pdb
+from .pdb_structure_fixer import PDBStructureFixer
+from .pdb_distance_trimmer import PDBDistanceTrimmer
+from .pdb_downloader import PDBDownloader
+from .multimodel_concatenator import MultiModelConcatenator
 from .intelligent_chain_identifier import IntelligentChainIdentifier, ChainIdentification
 from .shortest_chain_detector import ShortestChainDetector, create_shortest_chain_index
 from .index_generator import IndexGenerator
@@ -30,6 +34,10 @@ __all__ = [
     "StandardizationResult",
     "PDBSequenceExtractor",
     "extract_sequences_from_pdb",
+    "PDBStructureFixer",
+    "PDBDistanceTrimmer",
+    "PDBDownloader",
+    "MultiModelConcatenator",
     "IntelligentChainIdentifier",
     "ChainIdentification",
     "ShortestChainDetector",

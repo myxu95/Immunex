@@ -480,69 +480,132 @@ See `ARCHITECTURE.md` for detailed workflow diagrams and module specifications.
 
 ## 新增模块 (2025-12)
 
-### Analysis/Angles (角度分析模块)
+### Analysis/Angles (角度分析模块) ✅ **已完成 (2026-01-23)**
+
+**状态**: Phase 1 核心功能已实现并测试通过
+
+**实施总结**: `development/ANGLES_IMPLEMENTATION_SUMMARY.md`
+**设计文档**: `docs/ANGLE_MODULE_REDESIGN.md`
+**归档代码**: `development/archived_scripts/README_ANGLES_ARCHIVE.md`
 
 专门用于分子动力学轨迹中的角度相关分析，特别针对TCR-pMHC复合物对接姿态研究。
 
-**核心类**:
-- `PrincipalAxesCalculator`: 主轴计算基础类，基于惯性张量对角化
+**已实现的核心类**:
+- `PrincipalAxesCalculator`: 主轴计算基础类，基于惯性张量对角化和PCA
 - `DockingAngleAnalyzer`: TCR-pMHC对接角度分析 (Twist/Tilt/Swing三种角度)
-- `DihedralCalculator`: 通用二面角计算器
-- `VectorAngleCalculator`: 向量夹角计算工具类
+- **工具函数**: `angle_between_vectors`, `project_vector_onto_plane`, `signed_angle_between_vectors`, `dihedral_angle`
+
+**未来扩展** (可选):
+- `TrajectoryAngleAnalyzer`: 高层轨迹分析接口 (优先级低)
+- 角度聚类和分布分析
+- 批处理脚本和CLI命令
 
 **模块架构**:
 ```
 analysis/angles/
-├── __init__.py
-├── principal_axes.py      # 主轴计算基础类 (~150行)
-├── docking_angles.py      # TCR-pMHC对接角度 (~250行)
-├── dihedral.py            # 通用二面角 (~100行)
-└── vector_angles.py       # 向量夹角 (~100行)
+├── __init__.py              # ✅ 已完成 - 导入所有模块
+├── principal_axes.py        # ✅ 已实现 - 主轴计算 (~150行)
+├── docking_angles.py        # ✅ 已实现 - TCR-pMHC对接角度 (~380行)
+├── vector_angles.py         # ✅ 已实现 - 向量夹角工具 (~140行)
+└── trajectory_angles.py     # ⏳ 待实现 - 轨迹分析封装 (可选)
 ```
 
-**主要功能**:
+**设计目标** (✅ 已实现):
 
-1. **主轴计算** (principal_axes.py)
-   - 基于惯性张量的主轴计算 (复用GeometryAnalyzer方法)
-   - 支持单帧和整条轨迹的主轴演化
-   - 返回特征值和特征向量 (按惯性矩降序排列)
+1. **纯Python实现**
+   - ✅ 基于MDAnalysis + NumPy
+   - ✅ 不依赖外部C++工具
+   - ✅ 易于维护和扩展
 
-2. **TCR-pMHC对接角度** (docking_angles.py)
-   - **Twist角**: TCR二硫键连线在MHC平面上投影与MHC主轴的夹角
-   - **Tilt角**: TCR主轴在MHC平面上投影与MHC主轴的夹角
-   - **Swing角**: TCR连线相对peptide的侧向偏移角度
-   - 源自VMD脚本，完全Python实现
+2. **灵活的原子选择**
+   - ✅ 支持MDAnalysis选择语法
+   - ✅ 不限于固定链命名 (A/B/C/D/E)
+   - ✅ 适用于各种蛋白复合物
 
-3. **二面角计算** (dihedral.py)
-   - 支持任意4个原子定义的二面角
-   - 主链φ/ψ角和侧链旋转角
-   - 返回-180到180度范围
+3. **完整的轨迹支持**
+   - ✅ 单结构角度计算
+   - ✅ MD轨迹时间演化
+   - ✅ 角度统计和稳定性分析
 
-4. **向量夹角** (vector_angles.py)
-   - 主轴-主轴夹角
-   - 质心连线-参考方向夹角
-   - 灵活的向量角度计算接口
+4. **集成AfterMD流程**
+   - ✅ 统一的输出格式 (CSV/XVG)
+   - ⏳ CLI命令接口 (待实现)
+   - ⏳ 批处理脚本 (待实现)
+
+**已实现的主要功能**:
+
+1. **主轴计算** (principal_axes.py) ✅
+   - 质量加权惯性张量对角化
+   - 主轴和主惯性矩提取
+   - 单帧和轨迹演化支持
+
+2. **TCR-pMHC对接角度** (docking_angles.py) ✅
+   - **Twist角**: TCR二硫键连线投影与MHC主轴夹角
+   - **Tilt角**: TCR V域主轴投影与MHC主轴夹角
+   - **Swing角**: TCR相对peptide的侧向偏移角度
+   - 基于PCA的MHC参考坐标系
+   - 二硫键锚点定义TCR取向
+
+3. **向量夹角工具** (vector_angles.py) ✅
+   - 向量间夹角计算 (unsigned)
+   - 向量投影到平面
+   - 平面内有符号角度 (signed)
+   - 二面角计算
 
 **使用示例**:
 ```python
+# MD轨迹对接角度分析
 from aftermd.analysis.angles import DockingAngleAnalyzer
 
-analyzer = DockingAngleAnalyzer("md.tpr", "md_pbc.xtc")
+# 初始化分析器
+analyzer = DockingAngleAnalyzer('md.tpr', 'md_pbc.xtc')
+
+# 定义原子选择
+selections = {
+    'mhc': 'chainID A and resid 50:86 140:176 and name CA',
+    'tcr_alpha_cys': 'chainID D and resid 22 92 and name CA',
+    'tcr_beta_cys': 'chainID E and resid 23 89 and name CA',
+    'tcr_v': 'chainID D E and resid 1:115 and name CA',
+    'peptide': 'chainID C and name CA'
+}
+
+# 计算整条轨迹
 times, twist, tilt, swing = analyzer.calculate_docking_angles_trajectory(
-    mhc_selection="segname PROA and resid 50:86 140:176",
-    tcr_alpha_cys="segname PROD and resid 89:94 20:25 and resname CYS and name CA",
-    tcr_beta_cys="segname PROE and resid 89:94 20:25 and resname CYS and name CA",
-    tcr_v_selection="segname PROD PROE and resid 3:115",
-    peptide_selection="segname PROC",
-    output_file="docking_angles.csv"
+    mhc_selection=selections['mhc'],
+    tcr_alpha_cys_selection=selections['tcr_alpha_cys'],
+    tcr_beta_cys_selection=selections['tcr_beta_cys'],
+    tcr_v_selection=selections['tcr_v'],
+    peptide_selection=selections['peptide'],
+    stride=10,
+    output_file='docking_angles.csv'
 )
+
+# 统计分析
+import numpy as np
+print(f"Twist: {np.mean(twist):.2f} ± {np.std(twist):.2f}°")
+print(f"Tilt: {np.mean(tilt):.2f} ± {np.std(tilt):.2f}°")
+print(f"Swing: {np.mean(swing):.2f} ± {np.std(swing):.2f}°")
 ```
 
-**技术特点**:
-- 纯Python实现，基于MDAnalysis和NumPy
-- 复用现有GeometryAnalyzer的惯性张量计算 (geometry.py:55-68)
-- 向量投影和几何计算优化
-- 输出XVG/CSV格式，兼容GROMACS工具链
+**更多示例**: `examples/docking_angles_usage.py`
+
+**实施状态**:
+1. ✅ `principal_axes.py` - 基础模块 (已完成)
+2. ✅ `vector_angles.py` - 工具函数 (已完成)
+3. ✅ `docking_angles.py` - 主要功能 (已完成)
+4. ⏳ `trajectory_angles.py` - 高层接口 (可选，待实现)
+
+**测试状态**: 7/7 单元测试通过 (100%)
+
+**文档**:
+- 实施总结: `development/ANGLES_IMPLEMENTATION_SUMMARY.md`
+- 使用示例: `examples/docking_angles_usage.py`
+- 单元测试: `development/test_angle_modules.py`
+
+**迁移说明**:
+- 旧的C++工具已归档: `development/archived_scripts/tcr_docking_angle_backup_20260123/`
+- 旧的Python模块已归档: `development/archived_scripts/angles_old_20260123/`
+- 归档代码仍可访问，但建议使用新模块
 
 ---
 
