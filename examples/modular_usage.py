@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Modular usage examples for AfterMD toolkit.
+Modular usage examples for Immunex toolkit.
 
 This script demonstrates how to use the new modular structure 
 with individual functional modules.
@@ -9,20 +9,20 @@ with individual functional modules.
 import os
 import numpy as np
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 # Import individual modules for specific functionality
-from aftermd import (
+from immunex import (
     # Utils
-    BatchProcessor, PlotManager, PathManager,
+    PlotManager, PathManager,
     # Trajectory analysis modules
     RMSDCalculator, RDFCalculator, RadiusGyrationCalculator,
     DistanceCalculator, HydrogenBondAnalyzer,
     # Structure analysis modules  
     BFactorAnalyzer, ContactMapCalculator,
-    GeometryAnalyzer, AtomInfoExtractor,
-    # Preprocessing
-    PBCProcessor
+    GeometryAnalyzer, AtomInfoExtractor
 )
+from immunex.analysis import PBCProcessor
 
 
 def example_rmsd_analysis():
@@ -151,10 +151,7 @@ def example_trajectory_modules():
 def example_batch_processing_with_modules():
     """Example of batch processing with individual modules."""
     print("\n=== Batch Processing with Modules ===")
-    
-    # Initialize batch processor
-    processor = BatchProcessor(max_workers=2)
-    
+
     def analyze_single_trajectory(traj_file, output_dir="batch_results"):
         """Analyze single trajectory using multiple modules."""
         try:
@@ -187,16 +184,13 @@ def example_batch_processing_with_modules():
             
         except Exception as e:
             return f"Error: {e}"
-    
+
     # Find trajectory files
-    trajectory_files = processor.find_files(".", "*.xtc")
-    
+    trajectory_files = sorted(str(path) for path in Path(".").glob("*.xtc"))
+
     if trajectory_files:
-        results = processor.batch_analyze(
-            input_pattern="*.xtc",
-            output_dir="batch_analysis",
-            analysis_func=analyze_single_trajectory
-        )
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(analyze_single_trajectory, trajectory_files))
         print(f"Batch analysis completed: {results}")
     else:
         print("No trajectory files found for batch processing")
@@ -245,7 +239,7 @@ def example_plotting_integration():
 
 def main():
     """Run all modular examples."""
-    print("AfterMD Toolkit - Modular Usage Examples")
+    print("Immunex Toolkit - Modular Usage Examples")
     print("=" * 50)
     
     example_rmsd_analysis()

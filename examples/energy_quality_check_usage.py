@@ -17,7 +17,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from aftermd.analysis.quality import EnergyQualityChecker
+from immunex.analysis.quality import EnergyQualityChecker
 
 
 def example_1_basic_usage():

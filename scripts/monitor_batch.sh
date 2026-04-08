@@ -1,7 +1,7 @@
 #!/bin/bash
 # Monitor batch allostery analysis progress
 
-LOG_FILE="/home/xumy/work/development/AfterMD/batch_allostery_8core.log"
+LOG_FILE="/home/xumy/work/development/Immunex/batch_allostery_8core.log"
 PROCESS_ID=1869918
 
 echo "========================================================================"

@@ -6,14 +6,14 @@ def read_requirements():
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 setup(
-    name="aftermd",
+    name="immunex",
     version="0.1.0",
-    description="GROMACS MD Analysis Toolkit - Comprehensive molecular dynamics simulation analysis",
+    description="Immunex - Comprehensive Immunological MD Analysis Toolkit",
     long_description=open('README.md').read(),
     long_description_content_type="text/markdown",
     author="Research Team",
     author_email="research@example.com",
-    url="https://github.com/your-username/AfterMD",
+    url="https://github.com/your-username/Immunex",
     packages=find_packages(),
     install_requires=read_requirements(),
     python_requires=">=3.8",
@@ -29,11 +29,17 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
     ],
-    keywords="molecular dynamics, GROMACS, MD analysis, PBC processing, bioinformatics",
+    keywords="immunology, molecular dynamics, TCR-pMHC, MD analysis, PBC processing, bioinformatics",
     entry_points={
         'console_scripts': [
-            'aftermd-batch=aftermd.batch_process:main',
-            'aftermd-slurm=aftermd.utils.slurm_generator:main',
+            # Main unified CLI
+            'imn=immunex.cli.main:main',
+
+            # Legacy commands (backward compatibility)
+            'immunex=immunex.cli.main:main',
+            'immunex-batch=immunex.core.batch_process:main',
+            'immunex-slurm=immunex.cluster.slurm_generator:main',
+            'immunex-batch-pdb=immunex.cli.batch_pdb:main',
         ],
     },
     extras_require={

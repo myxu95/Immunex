@@ -2,17 +2,17 @@
 """
 示例：md.gro 文件复制功能演示
 
-这个示例展示了 AfterMD 如何自动复制 md.gro 文件到处理结果目录中，
+这个示例展示了 Immunex 如何自动复制 md.gro 文件到处理结果目录中，
 便于后续轨迹可视化和分析。
 """
 
-from aftermd.preprocessing import PBCProcessor
+from immunex.preprocessing import PBCProcessor
 from pathlib import Path
 
 def demo_gro_copy():
     """演示 .gro 文件复制功能"""
     
-    print("🔬 AfterMD .gro 文件复制功能演示")
+    print("🔬 Immunex .gro 文件复制功能演示")
     print("=" * 50)
     
     # 示例文件路径 (请根据实际情况修改)
@@ -47,7 +47,7 @@ def demo_gro_copy():
     
     print("\n🎯 使用方法:")
     code_example = '''
-from aftermd.preprocessing import PBCProcessor
+from immunex.preprocessing import PBCProcessor
 
 # 初始化处理器
 pbc_processor = PBCProcessor()

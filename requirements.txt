@@ -1,6 +1,6 @@
-# AfterMD - Core Dependencies
+# Immunex - Core Dependencies
 #
-# This file specifies the exact versions needed for AfterMD to function properly.
+# This file specifies the exact versions needed for Immunex to function properly.
 # For installation, you can use either:
 #   pip install -r requirements.txt  (exact versions)
 #   pip install -e .                 (flexible versions from setup.py)
@@ -20,3 +20,6 @@ MDAnalysis>=2.6.0
 matplotlib>=3.7.0
 seaborn>=0.12.0
 plotly>=5.15.0
+
+# HTTP requests and web API
+requests>=2.28.0

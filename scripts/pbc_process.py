@@ -3,7 +3,7 @@
 PBC Processing Startup Script
 
 This script provides a command-line interface for PBC (Periodic Boundary Conditions)
-processing using the AfterMD toolkit. It supports both single trajectory processing
+processing using the Immunex toolkit. It supports both single trajectory processing
 and batch processing of multiple trajectory files.
 
 Usage:
@@ -18,11 +18,11 @@ from pathlib import Path
 from typing import Optional, List
 
 try:
-    from aftermd.core import PBCProcessor
-    from aftermd.utils import BatchProcessor, PathManager
+    from immunex.core import PBCProcessor
+    from immunex.utils import BatchProcessor, PathManager
 except ImportError as e:
-    print(f"Error importing AfterMD modules: {e}")
-    print("Please ensure AfterMD is properly installed: pip install -e .")
+    print(f"Error importing Immunex modules: {e}")
+    print("Please ensure Immunex is properly installed: pip install -e .")
     sys.exit(1)
 
 
@@ -321,7 +321,7 @@ Method comparison:
     output_path = Path(args.output)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    print("AfterMD PBC Processing Script")
+    print("Immunex PBC Processing Script")
     print("=" * 40)
 
     # Execute processing

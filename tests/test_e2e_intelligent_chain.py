@@ -15,7 +15,7 @@ def test_complete_workflow():
     print("End-to-End Test: Intelligent Chain Standardization")
     print("="*80)
 
-    from aftermd.utils import (
+    from immunex.utils import (
         PDBSequenceExtractor,
         IntelligentChainIdentifier,
         PDBChainStandardizer

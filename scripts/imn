@@ -1,0 +1,792 @@
+#!/usr/bin/env python3
+"""
+Immunex (imn) - Unified Command-Line Interface
+
+A single command for all MD trajectory analysis tasks.
+No need for separate batch scripts - just specify the analysis type and data location.
+
+Usage:
+    imn batch tcr-rmsd --input-dirs /data --max-workers 8
+    imn batch cdr-rmsf --input-dirs /data --max-workers 4
+    imn batch docking-angles --input-dirs /data --stride 10
+
+Philosophy:
+    - Pipeline defines WHAT to compute (business logic)
+    - TaskDiscovery finds WHERE the data is
+    - BatchExecutor handles HOW to run in parallel
+    - User specifies: analysis type + data location + workers
+"""
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import argparse
+import logging
+from typing import List, Optional
+import pandas as pd
+
+from immunex.core import TaskDiscovery, PipelineContext
+from immunex.pipeline import (
+    BatchExecutor,
+    TCRRMSDPipeline,
+    pHLARMSDPipeline,
+    HLAAlphaRMSDPipeline,
+    CDRRMSFPipeline
+)
+from immunex.pipeline.nodes import ChainIdentificationNode
+from immunex.analysis.angles import DockingAngleAnalyzer
+from immunex.analysis.trajectory.contact_number import ContactNumberCalculator
+from immunex.analysis.trajectory.interface_rmsd import ContactInterfaceRMSDCalculator
+from immunex.analysis.allostery import ContactCorrelationAnalyzer
+import numpy as np
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Task Discovery Helpers
+# ============================================================================
+
+def discover_standard_tasks(input_dirs: List[str],
+                            trajectory_pattern: str = "*_processed.xtc") -> List[PipelineContext]:
+    """
+    Standard task discovery for most analyses.
+
+    Args:
+        input_dirs: List of input directories
+        trajectory_pattern: Glob pattern for trajectory files
+
+    Returns:
+        List of discovered tasks
+    """
+    discovery = TaskDiscovery()
+
+    def standard_rule(task_dir: Path):
+        """Find tasks with processed trajectories."""
+        trajectory_files = list(task_dir.glob(trajectory_pattern))
+        if not trajectory_files:
+            trajectory_files = list(task_dir.glob("md_pbc.xtc"))
+        if not trajectory_files:
+            trajectory_files = list(task_dir.glob("md.xtc"))
+
+        topology = task_dir / "md.tpr"
+        pdb_file = task_dir / "md_converted.pdb"
+
+        if trajectory_files and topology.exists() and pdb_file.exists():
+            return {
+                'topology': str(topology),
+                'trajectory_raw': str(trajectory_files[0]),
+                'structure_pdb': str(pdb_file),
+                'task_dir': str(task_dir)
+            }
+        return None
+
+    discovery.add_rule(standard_rule)
+
+    all_tasks = []
+    for input_dir in input_dirs:
+        discovered = discovery.discover(
+            base_directory=input_dir,
+            structure_type="flat"
+        )
+        all_tasks.extend(discovered)
+
+    logger.info(f"Discovered {len(all_tasks)} tasks")
+    return all_tasks
+
+
+# ============================================================================
+# Analysis Commands
+# ============================================================================
+
+def cmd_tcr_rmsd(args) -> int:
+    """Execute TCR RMSD batch analysis."""
+    logger.info("=" * 80)
+    logger.info("TCR RMSD Batch Analysis")
+    logger.info("=" * 80)
+
+    # Discover tasks
+    tasks = discover_standard_tasks(args.input_dirs)
+    if not tasks:
+        logger.error("No tasks found!")
+        return 1
+
+    # Set output directories
+    output_dir = Path(args.output_dir)
+    for task in tasks:
+        task.output_dir = str(output_dir / task.system_id)
+
+    # Create and execute pipeline
+    pipeline = TCRRMSDPipeline(use_anarci=not args.no_anarci)
+    executor = BatchExecutor(max_workers=args.max_workers)
+    results = executor.execute_pipeline(tasks, pipeline, show_progress=True)
+
+    # Save summary
+    output_dir.mkdir(parents=True, exist_ok=True)
+    executor.save_summary(results, str(output_dir / "batch_summary.csv"))
+
+    # Print summary
+    summary = executor.summarize_results(results)
+    logger.info(f"✓ Success: {summary['successful']}/{summary['total_tasks']} tasks")
+
+    return 0 if summary['failed'] == 0 else 1
+
+
+def cmd_phla_rmsd(args) -> int:
+    """Execute pHLA RMSD batch analysis."""
+    logger.info("=" * 80)
+    logger.info("pHLA RMSD Batch Analysis")
+    logger.info("=" * 80)
+
+    tasks = discover_standard_tasks(args.input_dirs)
+    if not tasks:
+        logger.error("No tasks found!")
+        return 1
+
+    output_dir = Path(args.output_dir)
+    for task in tasks:
+        task.output_dir = str(output_dir / task.system_id)
+
+    pipeline = pHLARMSDPipeline()
+    executor = BatchExecutor(max_workers=args.max_workers)
+    results = executor.execute_pipeline(tasks, pipeline, show_progress=True)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    executor.save_summary(results, str(output_dir / "batch_summary.csv"))
+
+    summary = executor.summarize_results(results)
+    logger.info(f"✓ Success: {summary['successful']}/{summary['total_tasks']} tasks")
+
+    return 0 if summary['failed'] == 0 else 1
+
+
+def cmd_hla_alpha_rmsd(args) -> int:
+    """Execute HLA alpha chain RMSD batch analysis."""
+    logger.info("=" * 80)
+    logger.info("HLA Alpha RMSD Batch Analysis")
+    logger.info("=" * 80)
+
+    tasks = discover_standard_tasks(args.input_dirs)
+    if not tasks:
+        logger.error("No tasks found!")
+        return 1
+
+    output_dir = Path(args.output_dir)
+    for task in tasks:
+        task.output_dir = str(output_dir / task.system_id)
+
+    pipeline = HLAAlphaRMSDPipeline()
+    executor = BatchExecutor(max_workers=args.max_workers)
+    results = executor.execute_pipeline(tasks, pipeline, show_progress=True)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    executor.save_summary(results, str(output_dir / "batch_summary.csv"))
+
+    summary = executor.summarize_results(results)
+    logger.info(f"✓ Success: {summary['successful']}/{summary['total_tasks']} tasks")
+
+    return 0 if summary['failed'] == 0 else 1
+
+
+def cmd_docking_angles(args) -> int:
+    """Execute docking angle batch analysis."""
+    logger.info("=" * 80)
+    logger.info("Docking Angle Batch Analysis")
+    logger.info("=" * 80)
+
+    tasks = discover_standard_tasks(args.input_dirs)
+    if not tasks:
+        logger.error("No tasks found!")
+        return 1
+
+    output_dir = Path(args.output_dir)
+
+    # Process each task
+    results = []
+    for task in tasks:
+        task.output_dir = str(output_dir / task.system_id)
+
+        try:
+            # Chain identification
+            chain_node = ChainIdentificationNode(method="anarci", fallback_to_heuristic=True)
+            task = chain_node.execute(task)
+
+            if task.has_errors():
+                results.append(task)
+                continue
+
+            # Generate selections
+            chain_mapping = task.metadata['chain_mapping']
+            mhc_chain = chain_mapping.get('mhc_alpha', 'A')
+            peptide_chain = chain_mapping.get('peptide', 'C')
+            tcr_alpha_chain = chain_mapping.get('tcr_alpha', 'D')
+            tcr_beta_chain = chain_mapping.get('tcr_beta', 'E')
+
+            # Calculate angles
+            analyzer = DockingAngleAnalyzer(task.topology, task.trajectory_raw)
+
+            angle_output = Path(task.output_dir) / 'docking_angles.csv'
+            angle_output.parent.mkdir(parents=True, exist_ok=True)
+
+            times, twist, tilt, swing = analyzer.calculate_docking_angles_trajectory(
+                mhc_selection=f'chainID {mhc_chain} and (resid 50:86 or resid 140:176) and name CA',
+                tcr_alpha_selection=f'chainID {tcr_alpha_chain}',
+                tcr_beta_selection=f'chainID {tcr_beta_chain}',
+                tcr_v_selection=f'chainID {tcr_alpha_chain} {tcr_beta_chain} and resid 1:115 and name CA',
+                peptide_selection=f'chainID {peptide_chain} and name CA',
+                stride=args.stride,
+                output_file=str(angle_output)
+            )
+
+            # Store results
+            import numpy as np
+            task.results['docking_angles'] = {
+                'n_frames': len(times),
+                'twist_mean': float(np.mean(twist)),
+                'twist_std': float(np.std(twist)),
+                'tilt_mean': float(np.mean(tilt)),
+                'tilt_std': float(np.std(tilt)),
+                'swing_mean': float(np.mean(swing)),
+                'swing_std': float(np.std(swing))
+            }
+
+            logger.info(f"✓ {task.system_id}: Twist={np.mean(twist):.1f}°, "
+                       f"Tilt={np.mean(tilt):.1f}°, Swing={np.mean(swing):.1f}°")
+
+        except Exception as e:
+            task.add_error(f"Docking angle analysis failed: {e}")
+            logger.error(f"✗ {task.system_id}: {e}")
+
+        results.append(task)
+
+    # Save summary
+    executor = BatchExecutor(max_workers=1)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    executor.save_summary(results, str(output_dir / "batch_summary.csv"))
+
+    summary = executor.summarize_results(results)
+    logger.info(f"✓ Success: {summary['successful']}/{summary['total_tasks']} tasks")
+
+    return 0 if summary['failed'] == 0 else 1
+
+
+def cmd_cdr_rmsf(args) -> int:
+    """
+    Execute CDR RMSF batch analysis using modular pipeline architecture.
+
+    This demonstrates the correct architecture:
+    - Layer 1: CDRManager + gmx rmsf (core modules)
+    - Layer 2: CDRDetectionNode + RMSFNode (pipeline nodes)
+    - Layer 3: CDRRMSFPipeline (orchestration)
+    - Layer 4: This CLI command + BatchExecutor (configuration)
+    """
+    logger.info("=" * 80)
+    logger.info("CDR RMSF Batch Analysis (Modular Pipeline Architecture)")
+    logger.info("=" * 80)
+
+    # Task discovery
+    tasks = discover_standard_tasks(args.input_dirs, "*_2step_processed.xtc")
+    if not tasks:
+        logger.error("No tasks found!")
+        return 1
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Set output directories for tasks
+    for task in tasks:
+        task.output_dir = str(output_dir / task.system_id)
+
+    # Configure pipeline
+    pipeline = CDRRMSFPipeline(
+        chains={'TCR_alpha': 'chainID D', 'TCR_beta': 'chainID E'},
+        include_cdrs=[1, 2, 3],
+        allow_fallback=True,
+        numbering_scheme="imgt"
+    )
+
+    # Execute batch processing
+    executor = BatchExecutor(max_workers=args.max_workers)
+    results = executor.execute_pipeline(tasks=tasks, pipeline=pipeline)
+
+    # Save summary
+    executor.save_summary(results, str(output_dir / "batch_summary.csv"))
+
+    # Print summary
+    summary = executor.summarize_results(results)
+    logger.info(f"\n{'='*80}")
+    logger.info(f"CDR RMSF Analysis Complete")
+    logger.info(f"{'='*80}")
+    logger.info(f"Total tasks: {summary['total_tasks']}")
+    logger.info(f"Successful: {summary['successful']}")
+    logger.info(f"Failed: {summary['failed']}")
+    logger.info(f"Success rate: {summary['success_rate']:.1f}%")
+
+    return 0 if summary['failed'] == 0 else 1
+
+
+def cmd_contact_frequency(args) -> int:
+    """Execute contact frequency batch analysis."""
+    logger.info("=" * 80)
+    logger.info("Contact Frequency Batch Analysis")
+    logger.info("=" * 80)
+
+    tasks = discover_standard_tasks(args.input_dirs)
+    if not tasks:
+        logger.error("No tasks found!")
+        return 1
+
+    output_dir = Path(args.output_dir)
+
+    # Define default selection pairs
+    default_selections = {
+        'tcr_peptide': ('chainID D E', 'chainID C'),
+        'tcr_mhc': ('chainID D E', 'chainID A B'),
+        'peptide_mhc': ('chainID C', 'chainID A B')
+    }
+
+    results = []
+    for task in tasks:
+        task.output_dir = str(output_dir / task.system_id)
+
+        try:
+            # Chain identification
+            chain_node = ChainIdentificationNode(method="anarci", fallback_to_heuristic=True)
+            task = chain_node.execute(task)
+
+            if task.has_errors():
+                results.append(task)
+                continue
+
+            # Build selections
+            chain_mapping = task.metadata['chain_mapping']
+            tcr_sel = f"chainID {chain_mapping.get('tcr_alpha', 'D')} {chain_mapping.get('tcr_beta', 'E')}"
+            mhc_sel = f"chainID {chain_mapping.get('mhc_alpha', 'A')} {chain_mapping.get('b2m', 'B')}"
+            pep_sel = f"chainID {chain_mapping.get('peptide', 'C')}"
+
+            selections = {
+                'tcr_peptide': (tcr_sel, pep_sel),
+                'tcr_mhc': (tcr_sel, mhc_sel),
+                'peptide_mhc': (pep_sel, mhc_sel)
+            }
+
+            # Calculate contact frequencies
+            calc = ContactNumberCalculator(task.topology, task.trajectory_raw)
+            task_output_dir = Path(task.output_dir)
+            task_output_dir.mkdir(parents=True, exist_ok=True)
+
+            contact_results = {}
+            for contact_name, (sel1, sel2) in selections.items():
+                output_file = task_output_dir / f"{contact_name}_freq.csv"
+
+                times, contact_status, frequency = calc.calculate_contact_frequency(
+                    selection1=sel1,
+                    selection2=sel2,
+                    cutoff=args.cutoff,
+                    heavy_atoms_only=True,
+                    output_file=str(output_file),
+                    time_unit='ps'
+                )
+
+                contact_results[contact_name] = {
+                    'frequency': float(frequency),
+                    'frames_with_contact': int(contact_status.sum()),
+                    'total_frames': len(contact_status)
+                }
+
+            task.results['contact_frequency'] = contact_results
+            logger.info(f"✓ {task.system_id}: TCR-Peptide={contact_results['tcr_peptide']['frequency']:.3f}, "
+                       f"TCR-MHC={contact_results['tcr_mhc']['frequency']:.3f}")
+
+        except Exception as e:
+            task.add_error(f"Contact frequency failed: {e}")
+            logger.error(f"✗ {task.system_id}: {e}")
+
+        results.append(task)
+
+    # Save summary
+    executor = BatchExecutor(max_workers=1)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    executor.save_summary(results, str(output_dir / "batch_summary.csv"))
+
+    summary = executor.summarize_results(results)
+    logger.info(f"✓ Success: {summary['successful']}/{summary['total_tasks']} tasks")
+
+    return 0 if summary['failed'] == 0 else 1
+
+
+def cmd_whole_protein_rmsf(args) -> int:
+    """Execute whole protein RMSF batch analysis."""
+    logger.info("=" * 80)
+    logger.info("Whole Protein RMSF Batch Analysis")
+    logger.info("=" * 80)
+
+    tasks = discover_standard_tasks(args.input_dirs, "*_2step_processed.xtc")
+    if not tasks:
+        logger.error("No tasks found!")
+        return 1
+
+    output_dir = Path(args.output_dir)
+
+    results = []
+    for task in tasks:
+        task.output_dir = str(output_dir / task.system_id)
+
+        try:
+            # Calculate whole protein RMSF
+            task_output_dir = Path(task.output_dir)
+            task_output_dir.mkdir(parents=True, exist_ok=True)
+
+            rmsf_file = task_output_dir / "whole_protein_rmsf.xvg"
+
+            cmd = [
+                'gmx', 'rmsf',
+                '-s', task.topology,
+                '-f', task.trajectory_raw,
+                '-o', str(rmsf_file),
+                '-res'
+            ]
+
+            # Select C-alpha atoms
+            result = subprocess.run(
+                cmd,
+                input="C-alpha\n",
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=True
+            )
+
+            # Parse RMSF values
+            rmsf_values = []
+            with open(rmsf_file, 'r') as f:
+                for line in f:
+                    if line.startswith('#') or line.startswith('@'):
+                        continue
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        rmsf_values.append(float(parts[1]))
+
+            task.results['whole_protein_rmsf'] = {
+                'n_residues': len(rmsf_values),
+                'mean_rmsf': float(np.mean(rmsf_values)),
+                'std_rmsf': float(np.std(rmsf_values)),
+                'max_rmsf': float(np.max(rmsf_values)),
+                'output_file': str(rmsf_file)
+            }
+
+            logger.info(f"✓ {task.system_id}: Mean RMSF={np.mean(rmsf_values):.3f} nm, "
+                       f"Max RMSF={np.max(rmsf_values):.3f} nm")
+
+        except Exception as e:
+            task.add_error(f"Whole protein RMSF failed: {e}")
+            logger.error(f"✗ {task.system_id}: {e}")
+
+        results.append(task)
+
+    # Save summary
+    executor = BatchExecutor(max_workers=1)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    executor.save_summary(results, str(output_dir / "batch_summary.csv"))
+
+    summary = executor.summarize_results(results)
+    logger.info(f"✓ Success: {summary['successful']}/{summary['total_tasks']} tasks")
+
+    return 0 if summary['failed'] == 0 else 1
+
+
+def cmd_interface_rmsd(args) -> int:
+    """Execute interface RMSD batch analysis."""
+    logger.info("=" * 80)
+    logger.info("Interface RMSD Batch Analysis")
+    logger.info("=" * 80)
+
+    tasks = discover_standard_tasks(args.input_dirs)
+    if not tasks:
+        logger.error("No tasks found!")
+        return 1
+
+    output_dir = Path(args.output_dir)
+
+    results = []
+    for task in tasks:
+        task.output_dir = str(output_dir / task.system_id)
+
+        try:
+            # Calculate interface RMSD
+            task_output_dir = Path(task.output_dir)
+            task_output_dir.mkdir(parents=True, exist_ok=True)
+
+            calc = ContactInterfaceRMSDCalculator(task.topology, task.trajectory_raw)
+            output_file = task_output_dir / "interface_rmsd.csv"
+
+            times, rmsd_values = calc.calculate_interface_rmsd(
+                cutoff=args.cutoff,
+                output_file=str(output_file),
+                verbose=False
+            )
+
+            task.results['interface_rmsd'] = {
+                'mean_rmsd_nm': float(np.mean(rmsd_values)),
+                'std_rmsd_nm': float(np.std(rmsd_values)),
+                'min_rmsd_nm': float(np.min(rmsd_values)),
+                'max_rmsd_nm': float(np.max(rmsd_values)),
+                'n_frames': len(rmsd_values),
+                'cutoff_angstrom': args.cutoff,
+                'output_file': str(output_file)
+            }
+
+            logger.info(f"✓ {task.system_id}: Mean interface RMSD={np.mean(rmsd_values):.4f} nm")
+
+        except Exception as e:
+            task.add_error(f"Interface RMSD failed: {e}")
+            logger.error(f"✗ {task.system_id}: {e}")
+
+        results.append(task)
+
+    # Save summary
+    executor = BatchExecutor(max_workers=1)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    executor.save_summary(results, str(output_dir / "batch_summary.csv"))
+
+    summary = executor.summarize_results(results)
+    logger.info(f"✓ Success: {summary['successful']}/{summary['total_tasks']} tasks")
+
+    return 0 if summary['failed'] == 0 else 1
+
+
+def cmd_allostery(args) -> int:
+    """Execute allostery (contact correlation) batch analysis."""
+    logger.info("=" * 80)
+    logger.info("Allostery (Contact Correlation) Batch Analysis")
+    logger.info("=" * 80)
+
+    tasks = discover_standard_tasks(args.input_dirs, "*_2step_processed.xtc")
+    if not tasks:
+        logger.error("No tasks found!")
+        return 1
+
+    output_dir = Path(args.output_dir)
+
+    results = []
+    for task in tasks:
+        task.output_dir = str(output_dir / task.system_id)
+
+        try:
+            # Run allostery analysis
+            task_output_dir = Path(task.output_dir)
+            task_output_dir.mkdir(parents=True, exist_ok=True)
+
+            analyzer = ContactCorrelationAnalyzer(task.topology, task.trajectory_raw)
+
+            allostery_results = analyzer.run_full_analysis(
+                selection="protein",
+                output_dir=str(task_output_dir),
+                cutoff=args.cutoff,
+                seq_dist_cutoff=args.seq_dist_cutoff,
+                min_frequency=args.min_frequency,
+                plot_heatmap=True,
+                heatmap_figsize=(16, 14)
+            )
+
+            task.results['allostery'] = {
+                'n_contacts': allostery_results['n_contacts'],
+                'mean_correlation': allostery_results['mean_correlation'],
+                'n_high_pos_correlation': allostery_results.get('n_high_pos_correlation', 0),
+                'n_high_neg_correlation': allostery_results.get('n_high_neg_correlation', 0)
+            }
+
+            logger.info(f"✓ {task.system_id}: {allostery_results['n_contacts']} contacts, "
+                       f"mean_corr={allostery_results['mean_correlation']:.3f}")
+
+        except Exception as e:
+            task.add_error(f"Allostery analysis failed: {e}")
+            logger.error(f"✗ {task.system_id}: {e}")
+
+        results.append(task)
+
+    # Save summary
+    executor = BatchExecutor(max_workers=1)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    executor.save_summary(results, str(output_dir / "batch_summary.csv"))
+
+    summary = executor.summarize_results(results)
+    logger.info(f"✓ Success: {summary['successful']}/{summary['total_tasks']} tasks")
+
+    return 0 if summary['failed'] == 0 else 1
+
+
+# ============================================================================
+# Main CLI
+# ============================================================================
+
+def main():
+    """Main entry point for imn CLI."""
+    parser = argparse.ArgumentParser(
+        prog='imn',
+        description='Immunex - Unified MD Analysis Tool',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    # TCR RMSD analysis
+    imn batch tcr-rmsd --input-dirs /data/batch1 /data/batch2 --max-workers 8
+
+    # pHLA RMSD analysis
+    imn batch phla-rmsd --input-dirs /data --output-dir /results
+
+    # Docking angles with custom stride
+    imn batch docking-angles --input-dirs /data --stride 5
+
+    # CDR RMSF analysis (auto-detection with ANARCI)
+    imn batch cdr-rmsf --input-dirs /data --max-workers 4
+
+    # Contact frequency analysis
+    imn batch contact-frequency --input-dirs /data --cutoff 4.5
+
+    # Whole protein RMSF
+    imn batch whole-protein-rmsf --input-dirs /data --max-workers 4
+
+    # Interface RMSD analysis
+    imn batch interface-rmsd --input-dirs /data --cutoff 10.0
+
+    # Allostery (contact correlation) analysis
+    imn batch allostery --input-dirs /data --cutoff 4.5 --min-frequency 0.15
+
+For more information: https://github.com/immunex/immunex
+        """
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
+
+    # Batch command
+    batch_parser = subparsers.add_parser('batch', help='Batch analysis commands')
+    batch_subparsers = batch_parser.add_subparsers(dest='analysis', help='Analysis type')
+
+    # Common arguments for all batch analyses
+    common_parser = argparse.ArgumentParser(add_help=False)
+    common_parser.add_argument(
+        '--input-dirs',
+        nargs='+',
+        required=True,
+        help='Input directories containing MD simulations'
+    )
+    common_parser.add_argument(
+        '--output-dir',
+        default='./results',
+        help='Output directory for results (default: ./results)'
+    )
+    common_parser.add_argument(
+        '--max-workers',
+        type=int,
+        default=4,
+        help='Number of parallel workers (default: 4)'
+    )
+
+    # TCR RMSD
+    parser_tcr = batch_subparsers.add_parser(
+        'tcr-rmsd',
+        parents=[common_parser],
+        help='TCR RMSD analysis (aligned to pHLA)'
+    )
+    parser_tcr.add_argument('--no-anarci', action='store_true',
+                           help='Disable ANARCI chain identification')
+    parser_tcr.set_defaults(func=cmd_tcr_rmsd)
+
+    # pHLA RMSD
+    parser_phla = batch_subparsers.add_parser(
+        'phla-rmsd',
+        parents=[common_parser],
+        help='pHLA complex RMSD analysis'
+    )
+    parser_phla.set_defaults(func=cmd_phla_rmsd)
+
+    # HLA alpha RMSD
+    parser_hla = batch_subparsers.add_parser(
+        'hla-alpha-rmsd',
+        parents=[common_parser],
+        help='HLA alpha chain RMSD analysis'
+    )
+    parser_hla.set_defaults(func=cmd_hla_alpha_rmsd)
+
+    # Docking angles
+    parser_angles = batch_subparsers.add_parser(
+        'docking-angles',
+        parents=[common_parser],
+        help='TCR-pMHC docking angle analysis'
+    )
+    parser_angles.add_argument('--stride', type=int, default=10,
+                              help='Frame stride for trajectory (default: 10)')
+    parser_angles.set_defaults(func=cmd_docking_angles)
+
+    # CDR RMSF
+    parser_cdr_rmsf = batch_subparsers.add_parser(
+        'cdr-rmsf',
+        parents=[common_parser],
+        help='CDR region RMSF analysis (ANARCI auto-detection)'
+    )
+    parser_cdr_rmsf.set_defaults(func=cmd_cdr_rmsf)
+
+    # Contact frequency
+    parser_contact = batch_subparsers.add_parser(
+        'contact-frequency',
+        parents=[common_parser],
+        help='Contact frequency analysis between protein regions'
+    )
+    parser_contact.add_argument('--cutoff', type=float, default=4.5,
+                               help='Distance cutoff in Angstrom (default: 4.5)')
+    parser_contact.set_defaults(func=cmd_contact_frequency)
+
+    # Whole protein RMSF
+    parser_whole_rmsf = batch_subparsers.add_parser(
+        'whole-protein-rmsf',
+        parents=[common_parser],
+        help='Whole protein RMSF analysis (all residues)'
+    )
+    parser_whole_rmsf.set_defaults(func=cmd_whole_protein_rmsf)
+
+    # Interface RMSD
+    parser_interface = batch_subparsers.add_parser(
+        'interface-rmsd',
+        parents=[common_parser],
+        help='Interface RMSD analysis (residues near peptide)'
+    )
+    parser_interface.add_argument('--cutoff', type=float, default=10.0,
+                                 help='Contact distance cutoff in Angstrom (default: 10.0)')
+    parser_interface.set_defaults(func=cmd_interface_rmsd)
+
+    # Allostery analysis
+    parser_allostery = batch_subparsers.add_parser(
+        'allostery',
+        parents=[common_parser],
+        help='Allostery analysis (contact correlation)'
+    )
+    parser_allostery.add_argument('--cutoff', type=float, default=4.5,
+                                 help='Contact distance cutoff in Angstrom (default: 4.5)')
+    parser_allostery.add_argument('--seq-dist-cutoff', type=int, default=3,
+                                 help='Sequence distance cutoff (default: 3)')
+    parser_allostery.add_argument('--min-frequency', type=float, default=0.15,
+                                 help='Minimum contact frequency (default: 0.15)')
+    parser_allostery.set_defaults(func=cmd_allostery)
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    if args.command == 'batch' and not args.analysis:
+        batch_parser.print_help()
+        return 1
+
+    # Execute command
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

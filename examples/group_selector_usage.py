@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Group Selector usage examples for AfterMD toolkit.
+Group Selector usage examples for Immunex toolkit.
 
 This script demonstrates how to use the GroupSelector for intelligent
 GROMACS group selection in MD analysis workflows.
 """
 
 import os
-from aftermd import RMSDCalculator, PBCProcessor
-from aftermd.utils import GroupSelector
+from immunex import RMSDCalculator, PBCProcessor
+from immunex.utils import GroupSelector
 
 
 def example_basic_group_selection():
@@ -286,7 +286,7 @@ def example_integration_workflow():
 
 def main():
     """Run all group selector examples."""
-    print("AfterMD Group Selector - Usage Examples")
+    print("Immunex Group Selector - Usage Examples")
     print("=" * 50)
     
     example_basic_group_selection()

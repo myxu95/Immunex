@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AfterMD SLURM脚本生成器
+Immunex SLURM脚本生成器
 为MD模拟批量处理生成SLURM作业脚本
 
 使用方法:
@@ -11,12 +11,12 @@ AfterMD SLURM脚本生成器
 import sys
 import argparse
 from pathlib import Path
-from aftermd import generate_slurm_scripts_for_md_tasks
+from immunex import generate_slurm_scripts_for_md_tasks
 
 def create_parser():
     """创建命令行参数解析器"""
     parser = argparse.ArgumentParser(
-        description="AfterMD SLURM脚本生成器 - 为MD模拟批量处理生成SLURM作业脚本",
+        description="Immunex SLURM脚本生成器 - 为MD模拟批量处理生成SLURM作业脚本",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
@@ -39,7 +39,7 @@ def create_parser():
         --time 24:00:00
         
 输出文件:
-  - slurm_scripts/aftermd_batch_*.sh  # 批处理脚本
+  - slurm_scripts/immunex_batch_*.sh  # 批处理脚本
   - slurm_scripts/submit_all_batches.sh  # 批量提交脚本
         """
     )
@@ -222,7 +222,7 @@ def build_slurm_params(args):
 
 def print_configuration(args, slurm_params, qualified_count=None):
     """打印配置信息"""
-    print("🚀 AfterMD SLURM脚本生成器")
+    print("🚀 Immunex SLURM脚本生成器")
     print("=" * 50)
     print(f"📂 输入目录: {args.simulations_path}")
     

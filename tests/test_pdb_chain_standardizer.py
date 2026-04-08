@@ -15,7 +15,7 @@ import pytest
 import tempfile
 import shutil
 from pathlib import Path
-from aftermd.utils.pdb_chain_standardizer import (
+from immunex.analysis.structure.pdb_chain_standardizer import (
     PDBChainStandardizer,
     ChainInfo,
     StandardizationResult

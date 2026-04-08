@@ -16,7 +16,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from aftermd.analysis.allostery import ContactCorrelationAnalyzer
+from immunex.analysis.allostery import ContactCorrelationAnalyzer
 
 
 def basic_analysis_example():
@@ -248,7 +248,7 @@ def main():
     """Run all examples"""
 
     print("\\n" + "=" * 70)
-    print("AfterMD Contact Correlation Analysis Examples")
+    print("Immunex Contact Correlation Analysis Examples")
     print("=" * 70)
 
     # Run examples

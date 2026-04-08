@@ -14,7 +14,7 @@ import pytest
 import tempfile
 import shutil
 from pathlib import Path
-from aftermd.utils.shortest_chain_detector import (
+from immunex.analysis.topology.shortest_chain_detector import (
     ShortestChainDetector,
     create_shortest_chain_index
 )

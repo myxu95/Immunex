@@ -6,13 +6,13 @@ This script demonstrates the usage of enhanced chain standardization features:
 2. Chain-based index generation (supports PDB and TPR input)
 3. Integration with PBC processing workflow
 
-Author: AfterMD Development Team
+Author: Immunex Development Team
 Date: 2026-01-21
 """
 
 import os
 from pathlib import Path
-from aftermd.utils import (
+from immunex.utils import (
     PDBChainStandardizer,
     ChainBasedIndexGenerator,
     generate_peptide_index_from_pdb,
@@ -281,7 +281,7 @@ def example_batch_processing():
 if __name__ == "__main__":
     print("\n")
     print("=" * 80)
-    print("AfterMD Chain Standardization Usage Examples")
+    print("Immunex Chain Standardization Usage Examples")
     print("=" * 80)
 
     # Create output directories

@@ -7,7 +7,7 @@ for standardizing chain identifiers in protein complex PDB files.
 """
 
 from pathlib import Path
-from aftermd.utils import PDBChainStandardizer
+from immunex.analysis import PDBChainStandardizer
 
 def example_single_file():
     """Example: Standardize a single PDB file."""

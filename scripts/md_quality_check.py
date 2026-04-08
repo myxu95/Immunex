@@ -22,7 +22,7 @@ from typing import List, Dict, Tuple
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from aftermd.analysis.quality import (
+from immunex.analysis.quality import (
     MDCompletenessChecker,
     StructureValidator,
     BatchTracker,

@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-Comprehensive AfterMD Toolkit Usage Examples.
+Comprehensive Immunex Toolkit Usage Examples.
 
-This script demonstrates the complete workflow and capabilities of AfterMD,
+This script demonstrates the complete workflow and capabilities of Immunex,
 including path management, trajectory analysis, structure analysis, plotting,
 PBC preprocessing, and batch processing.
 """
 
 import os
 from pathlib import Path
-from aftermd import (
-    BatchProcessor,
+from concurrent.futures import ThreadPoolExecutor
+from immunex import (
     PathManager,
     PlotManager,
-    PBCProcessor,
     RMSDCalculator,
     BFactorAnalyzer
 )
+from immunex.analysis import PBCProcessor
 
 
 def example_path_management():
@@ -158,12 +158,9 @@ def example_preprocessing():
 def example_batch_processing():
     """Example of batch processing."""
     print("\n=== Batch Processing Example ===")
-    
-    # Initialize batch processor
-    processor = BatchProcessor(max_workers=4)
-    
+
     # Find trajectory files
-    trajectory_files = processor.find_files(".", "*.xtc")
+    trajectory_files = sorted(str(path) for path in Path(".").glob("*.xtc"))
     print(f"Found {len(trajectory_files)} trajectory files")
     
     # Example processing function
@@ -178,13 +175,8 @@ def example_batch_processing():
             return None
     
     if trajectory_files:
-        # Batch analyze
-        results = processor.batch_analyze(
-            input_pattern="*.xtc",
-            output_dir="batch_results",
-            analysis_func=analyze_trajectory
-        )
-        
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(analyze_trajectory, trajectory_files))
         print(f"Batch processing summary: {results}")
     else:
         print("No trajectory files found for batch processing")
@@ -192,7 +184,7 @@ def example_batch_processing():
 
 def main():
     """Run all examples."""
-    print("AfterMD Toolkit - Comprehensive Usage Examples")
+    print("Immunex Toolkit - Comprehensive Usage Examples")
     print("=" * 50)
     
     example_path_management()

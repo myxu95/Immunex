@@ -6,7 +6,7 @@ This example demonstrates the new hybrid index approach:
 - Fixed components (HLA, pHLA, peptide, TCR) use unified base index
 - CDR3 components are generated on-demand
 
-Author: AfterMD Development Team
+Author: Immunex Development Team
 """
 
 import sys
@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from aftermd.analysis.trajectory import RMSDInterface
+from immunex.analysis.trajectory import RMSDInterface
 
 
 def main():

@@ -117,7 +117,7 @@ dmypy.json
 ehthumbs.db
 Thumbs.db
 
-# AfterMD specific ignores
+# Immunex specific ignores
 # Temporary analysis results
 **/analysis_results/
 **/trajectory_analysis/
@@ -166,5 +166,8 @@ development/logs/
 # Data directories
 input/
 output/
+results/
+test_output/
+test_batch/
 test_allostery_peptide/
 development/tcr_docking_angle/tcr_docking_angle/

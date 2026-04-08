@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AfterMD Quality Analysis Usage Example
+Immunex Quality Analysis Usage Example
 
 Demonstrates how to use the MD Production quality analysis module
 for comprehensive MD simulation quality control.
@@ -10,10 +10,10 @@ import sys
 from pathlib import Path
 import logging
 
-# Add the parent directory to Python path to import aftermd
+# Add the parent directory to Python path to import immunex
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from aftermd.analysis.quality import (
+from immunex.analysis.quality import (
     MDCompletenessChecker,
     StructureValidator,
     BatchTracker,
@@ -310,7 +310,7 @@ def example_comprehensive_reporting():
 
 def main():
     """Run all quality analysis examples."""
-    print("AfterMD Quality Analysis Module Examples")
+    print("Immunex Quality Analysis Module Examples")
     print("=" * 60)
     
     try:

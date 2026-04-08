@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generic batch worker for AfterMD SLURM processing.
+Generic batch worker for Immunex SLURM processing.
 
 This script reads task configurations from JSON files and executes
 batch processing jobs. Supports different task types (PBC, RMSD, etc.).
@@ -14,13 +14,13 @@ from pathlib import Path
 from typing import Dict, Any, List
 from datetime import datetime
 
-# Add AfterMD to path
-AFTERMD_PATH = "/public/home/xmy/tools/AfrerMD"
-if Path(AFTERMD_PATH).exists():
-    sys.path.insert(0, AFTERMD_PATH)
+# Add Immunex to path
+IMMUNEX_PATH = "/public/home/xmy/tools/Immunex"
+if Path(IMMUNEX_PATH).exists():
+    sys.path.insert(0, IMMUNEX_PATH)
 
-from aftermd.preprocessing.pbc_processor import PBCProcessor
-from aftermd.analysis.trajectory.rmsd import RMSDCalculator
+from immunex.core.pbc_processor import PBCProcessor
+from immunex.analysis.trajectory.rmsd import RMSDCalculator
 
 
 class BatchWorker:
@@ -245,7 +245,7 @@ class BatchWorker:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="AfterMD batch worker for SLURM processing",
+        description="Immunex batch worker for SLURM processing",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

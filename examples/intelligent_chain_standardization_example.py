@@ -6,7 +6,7 @@ Demonstrates the new ANARCI-based chain identification system for pHLA-TCR compl
 """
 
 from pathlib import Path
-from aftermd.utils import (
+from immunex.utils import (
     PDBSequenceExtractor,
     IntelligentChainIdentifier,
     PDBChainStandardizer

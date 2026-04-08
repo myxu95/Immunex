@@ -6,7 +6,7 @@ Test ANARCI and Intelligent Chain Identification System
 import sys
 from pathlib import Path
 
-# Add aftermd to path
+# Add immunex to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def test_anarci_basic():
@@ -52,13 +52,13 @@ def test_anarci_basic():
 
 
 def test_anarci_wrapper():
-    """Test AfterMD's ANARCIWrapper."""
+    """Test Immunex's ANARCIWrapper."""
     print("\n" + "="*80)
-    print("Test 2: AfterMD ANARCIWrapper")
+    print("Test 2: Immunex ANARCIWrapper")
     print("="*80)
 
     try:
-        from aftermd.utils.cdr_manager import ANARCIWrapper
+        from immunex.analysis.topology import ANARCIWrapper
 
         wrapper = ANARCIWrapper(allow_fallback=True)
         print(f"\n✓ ANARCIWrapper initialized")
@@ -96,7 +96,7 @@ def test_sequence_extractor():
     print("="*80)
 
     try:
-        from aftermd.utils import PDBSequenceExtractor
+        from immunex.analysis import PDBSequenceExtractor
 
         extractor = PDBSequenceExtractor()
         print(f"\n✓ PDBSequenceExtractor initialized")
@@ -125,7 +125,7 @@ def test_intelligent_identifier():
     print("="*80)
 
     try:
-        from aftermd.utils import IntelligentChainIdentifier
+        from immunex.analysis import IntelligentChainIdentifier
 
         identifier = IntelligentChainIdentifier(use_anarci=True)
         print(f"\n✓ IntelligentChainIdentifier initialized")
@@ -156,7 +156,7 @@ def test_pdb_chain_standardizer():
     print("="*80)
 
     try:
-        from aftermd.utils import PDBChainStandardizer
+        from immunex.analysis import PDBChainStandardizer
 
         # Test legacy mode
         std_legacy = PDBChainStandardizer(use_intelligent_identification=False)
@@ -186,7 +186,7 @@ def test_pdb_chain_standardizer():
 def main():
     """Run all tests."""
     print("\n" + "="*80)
-    print("AfterMD Intelligent Chain Identification - Test Suite")
+    print("Immunex Intelligent Chain Identification - Test Suite")
     print("="*80)
 
     results = {
