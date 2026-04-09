@@ -13,10 +13,10 @@ setup(
     long_description_content_type="text/markdown",
     author="Research Team",
     author_email="research@example.com",
-    url="https://github.com/your-username/Immunex",
+    url="https://github.com/myxu95/AfterMD",
     packages=find_packages(),
     install_requires=read_requirements(),
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",

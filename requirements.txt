@@ -9,9 +9,13 @@
 numpy>=1.24.0
 pandas>=2.0.0
 scipy>=1.10.0
+PyYAML>=6.0
 
 # MD analysis
 MDAnalysis>=2.6.0
+
+# Structure analysis
+biopython>=1.81
 
 # CDR recognition and antibody numbering (install via conda: conda install -c bioconda anarci)
 # anarci>=1.3
@@ -20,6 +24,10 @@ MDAnalysis>=2.6.0
 matplotlib>=3.7.0
 seaborn>=0.12.0
 plotly>=5.15.0
+
+# Workflow / graph utilities
+tqdm>=4.65.0
+networkx>=3.1
 
 # HTTP requests and web API
 requests>=2.28.0
