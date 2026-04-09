@@ -98,7 +98,7 @@ def analyze_group_mapping(atoms, atom_numbers):
 
 def main():
     task = "3KXF_1"
-    task_dir = Path(f"/home/xumy/work/development/AfterMD/input/pbc_1000frames_2step/{task}")
+    task_dir = Path(f"/home/xumy/work/development/Immunex/input/pbc_1000frames_2step/{task}")
     tpr_file = task_dir / "md.tpr"
     index_file = task_dir / "phla_tcr.ndx"
     temp_pdb = Path(f"/tmp/{task}_protein.pdb")

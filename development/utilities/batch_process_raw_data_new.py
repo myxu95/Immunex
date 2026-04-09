@@ -15,11 +15,11 @@ import json
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from aftermd.core import PBCProcessor
+from immunex.core import PBCProcessor
 
 # Configuration
-INPUT_BASE = Path("/home/xumy/work/development/AfterMD/input/raw_data_new")
-OUTPUT_BASE = Path("/home/xumy/work/development/AfterMD/input/pbc_1000frames_2step_patch")
+INPUT_BASE = Path("/home/xumy/work/development/Immunex/input/raw_data_new")
+OUTPUT_BASE = Path("/home/xumy/work/development/Immunex/input/pbc_1000frames_2step_patch")
 LOGS_DIR = OUTPUT_BASE / "logs"
 N_PROCESSES = 4
 DT_PS = 100.0

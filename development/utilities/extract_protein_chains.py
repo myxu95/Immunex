@@ -82,12 +82,12 @@ def main():
     logger.info("=" * 60)
 
     # Paths
-    standardized_pdb_dir = Path("/home/xumy/work/development/AfterMD/input/standardized_pdbs")
-    output_dir = Path("/home/xumy/work/development/AfterMD/input/protein_only_pdbs")
+    standardized_pdb_dir = Path("/home/xumy/work/development/Immunex/input/standardized_pdbs")
+    output_dir = Path("/home/xumy/work/development/Immunex/input/protein_only_pdbs")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Get failed tasks
-    failed_log = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/cdr3_beta_rmsd_failed.log")
+    failed_log = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/cdr3_beta_rmsd_failed.log")
 
     failed_tasks = []
     with open(failed_log) as f:

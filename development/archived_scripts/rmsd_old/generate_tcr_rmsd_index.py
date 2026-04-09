@@ -8,8 +8,8 @@ import pandas as pd
 from pathlib import Path
 
 # Load data
-tcr_summary = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/tcr_overall_rmsd_summary.csv")
-output_dir = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis")
+tcr_summary = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/tcr_overall_rmsd_summary.csv")
+output_dir = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis")
 
 df = pd.read_csv(tcr_summary)
 

@@ -173,8 +173,8 @@ def main():
     logger.info("=" * 80)
 
     # Paths
-    trajectory_base = Path("/home/xumy/work/development/AfterMD/input/pbc_1000frames_2step")
-    cluster_output = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/cluster_analysis")
+    trajectory_base = Path("/home/xumy/work/development/Immunex/input/pbc_1000frames_2step")
+    cluster_output = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/cluster_analysis")
 
     # Get all task directories
     task_dirs = [d for d in cluster_output.iterdir() if d.is_dir()]

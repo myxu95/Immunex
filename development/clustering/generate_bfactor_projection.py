@@ -14,9 +14,9 @@ print("=" * 80)
 
 # File paths for the representative sample (3gsn_1)
 task_name = "3gsn_1"
-rmsf_file = f"/home/xumy/work/development/AfterMD/output/rmsf_cdr/{task_name}/rmsf_whole_protein.xvg"
-pdb_input = f"/home/xumy/work/development/AfterMD/input/pbc_1000frames_2step/{task_name}/md_converted.pdb"
-pdb_output = f"/home/xumy/work/development/AfterMD/output/rmsf_cdr/{task_name}/{task_name}_bfactor.pdb"
+rmsf_file = f"/home/xumy/work/development/Immunex/output/rmsf_cdr/{task_name}/rmsf_whole_protein.xvg"
+pdb_input = f"/home/xumy/work/development/Immunex/input/pbc_1000frames_2step/{task_name}/md_converted.pdb"
+pdb_output = f"/home/xumy/work/development/Immunex/output/rmsf_cdr/{task_name}/{task_name}_bfactor.pdb"
 
 print(f"\nTask: {task_name}")
 print(f"PDB ID: {task_name[:4].upper()}")

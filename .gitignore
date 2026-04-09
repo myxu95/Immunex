@@ -167,7 +167,10 @@ development/logs/
 input/
 output/
 results/
+tests/
 test_output/
 test_batch/
 test_allostery_peptide/
+hla_library
+test_data/
 development/tcr_docking_angle/tcr_docking_angle/

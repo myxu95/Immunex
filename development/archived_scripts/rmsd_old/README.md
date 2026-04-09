@@ -16,7 +16,7 @@ python scripts/calculate_rmsd.py md.tpr md.xtc --align pHLA --calc TCR
 
 **Python API**:
 ```python
-from aftermd.analysis.trajectory import RMSDInterface
+from immunex.analysis.trajectory import RMSDInterface
 rmsd = RMSDInterface("md.tpr", "md.xtc")
 result = rmsd.calculate(align="pHLA", calc="TCR")
 ```
@@ -35,7 +35,7 @@ python scripts/calculate_rmsd.py md.tpr md.xtc \
 
 **批量处理**:
 ```python
-from aftermd.analysis.trajectory import RMSDInterface
+from immunex.analysis.trajectory import RMSDInterface
 rmsd = RMSDInterface("md.tpr", "md.xtc")
 calculations = [
     {'align': 'TCR', 'calc': 'CDR3_beta',
@@ -53,7 +53,7 @@ df = rmsd.batch_calculate(calculations)
 Index生成现已集成到 `IndexGenerator`，自动处理
 
 ```python
-from aftermd.utils import IndexGenerator
+from immunex.utils import IndexGenerator
 gen = IndexGenerator("md.tpr", auto_standardize=True)
 # 自动生成 base_components.ndx（包含TCR和所有固定组分）
 ```
@@ -67,7 +67,7 @@ gen = IndexGenerator("md.tpr", auto_standardize=True)
 Index生成现已集成到 `IndexGenerator`，自动处理chain标准化
 
 ```python
-from aftermd.utils import IndexGenerator
+from immunex.utils import IndexGenerator
 gen = IndexGenerator("md.tpr", auto_standardize=True)
 gen.generate_multi_component_index(['pHLA', 'TCR'])
 ```
@@ -125,7 +125,7 @@ python scripts/calculate_rmsd.py md.tpr md.xtc --align pHLA --calc TCR
 
 - **完整指南**: `docs/RMSD_CALCULATION_GUIDE.md`
 - **使用示例**: `examples/rmsd_unified_example.py`
-- **API文档**: `aftermd/analysis/trajectory/rmsd_interface.py`
+- **API文档**: `immunex/analysis/trajectory/rmsd_interface.py`
 
 ---
 

@@ -14,8 +14,8 @@ plt.style.use('seaborn-v0_8-paper')
 sns.set_palette("husl")
 
 # Paths
-tcr_summary = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/tcr_overall_rmsd_summary.csv")
-output_dir = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/figures")
+tcr_summary = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/tcr_overall_rmsd_summary.csv")
+output_dir = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/figures")
 
 # Load data
 df = pd.read_csv(tcr_summary)

@@ -7,7 +7,7 @@ Tests:
 2. Chain reading and validation
 3. Index file generation
 
-Author: AfterMD Development Team
+Author: Immunex Development Team
 Date: 2026-01-21
 """
 
@@ -20,7 +20,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from aftermd.utils import (
+from immunex.utils import (
     ChainBasedIndexGenerator,
     generate_peptide_index_from_pdb
 )
@@ -228,7 +228,7 @@ def test_error_handling():
 if __name__ == "__main__":
     print("\n")
     print("=" * 80)
-    print("AfterMD Chain Standardization - Test Suite")
+    print("Immunex Chain Standardization - Test Suite")
     print("=" * 80)
 
     all_passed = True

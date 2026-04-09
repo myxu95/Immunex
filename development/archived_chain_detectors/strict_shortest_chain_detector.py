@@ -91,7 +91,7 @@ class StrictShortestChainDetector:
         """
         try:
             # Create temporary index file
-            temp_dir = tempfile.mkdtemp(prefix="aftermd_splitch_")
+            temp_dir = tempfile.mkdtemp(prefix="immunex_splitch_")
             index_file = Path(temp_dir) / "chains.ndx"
 
             logger.info(f"创建临时index文件: {index_file}")

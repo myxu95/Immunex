@@ -54,8 +54,8 @@ def run_command(cmd, description, log_file=None):
 
 
 def main():
-    python_bin = "/home/xumy/work/miniconda3/envs/aftermd/bin/python"
-    project_dir = Path("/home/xumy/work/development/AfterMD")
+    python_bin = "/home/xumy/work/miniconda3/envs/immunex/bin/python"
+    project_dir = Path("/home/xumy/work/development/Immunex")
 
     # Step 1: Run CDR RMSD analysis
     logger.info("=" * 80)

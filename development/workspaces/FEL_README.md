@@ -17,8 +17,8 @@ Complete data processing workflow and validation results for FEL calculations, i
 ## Next Steps
 
 Decompose the algorithm modules and integrate them into:
-- `aftermd/analysis/free_energy/fel_calculator.py`
-- `aftermd/analysis/free_energy/fel_visualizer.py`
+- `immunex/analysis/free_energy/fel_calculator.py`
+- `immunex/analysis/free_energy/fel_visualizer.py`
 
 ## Related Module Development
 

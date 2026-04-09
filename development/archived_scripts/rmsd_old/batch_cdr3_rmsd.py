@@ -157,8 +157,8 @@ def main():
     logger.info("="*60)
 
     # Paths
-    base_dir = Path("/home/xumy/work/development/AfterMD/input/pbc_1000frames_2step")
-    cdr3_analysis_dir = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis")
+    base_dir = Path("/home/xumy/work/development/Immunex/input/pbc_1000frames_2step")
+    cdr3_analysis_dir = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis")
 
     # Find all tasks with required files
     tasks = []

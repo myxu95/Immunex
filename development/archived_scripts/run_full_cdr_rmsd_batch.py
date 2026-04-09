@@ -19,12 +19,12 @@ logging.basicConfig(
 def main():
     # Two input directories
     input_dirs = [
-        "/home/xumy/work/development/AfterMD/input/pbc_1000frames_2step",
-        "/home/xumy/work/development/AfterMD/input/pbc_1000frames_2step_patch"
+        "/home/xumy/work/development/Immunex/input/pbc_1000frames_2step",
+        "/home/xumy/work/development/Immunex/input/pbc_1000frames_2step_patch"
     ]
 
-    output_dir = "/home/xumy/work/development/AfterMD/output/cdr_rmsd_phla_align_full"
-    cdr3_ranges_file = "/home/xumy/work/development/AfterMD/cdr3_analysis_toolkit/cdr3_ranges.json"
+    output_dir = "/home/xumy/work/development/Immunex/output/cdr_rmsd_phla_align_full"
+    cdr3_ranges_file = "/home/xumy/work/development/Immunex/cdr3_analysis_toolkit/cdr3_ranges.json"
 
     print("="*80)
     print("Full Batch CDR RMSD Analysis")

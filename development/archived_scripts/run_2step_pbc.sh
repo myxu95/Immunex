@@ -18,7 +18,7 @@ echo "Node: $(hostname)"
 echo ""
 
 # 激活conda环境
-source /public/home/xmy/app/miniconda/bin/activate aftermd
+source /public/home/xmy/app/miniconda/bin/activate immunex
 
 # 切换到工作目录
 cd /public/home/xmy/dataset/workspace/pbc_1000frames_2step

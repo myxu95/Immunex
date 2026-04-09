@@ -74,8 +74,8 @@ def main():
     logger.info("=" * 80)
 
     # Paths
-    cluster_dir = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/cluster_analysis")
-    output_dir = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/training_data")
+    cluster_dir = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/cluster_analysis")
+    output_dir = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/training_data")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Find all clusters_full.pdb files

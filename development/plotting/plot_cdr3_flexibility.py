@@ -15,8 +15,8 @@ plt.style.use('seaborn-v0_8-paper')
 sns.set_palette("husl")
 
 # Paths
-summary_csv = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/cdr3_beta_rmsd_complete_summary.csv")
-output_dir = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/figures")
+summary_csv = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/cdr3_beta_rmsd_complete_summary.csv")
+output_dir = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/figures")
 output_dir.mkdir(exist_ok=True)
 
 # Load data
@@ -128,7 +128,7 @@ representative_tasks = {
 }
 
 fig, axes = plt.subplots(3, 1, figsize=(12, 10))
-trajectory_base = Path("/home/xumy/work/development/AfterMD/input/pbc_1000frames_2step")
+trajectory_base = Path("/home/xumy/work/development/Immunex/input/pbc_1000frames_2step")
 
 for ax, (label, task_name) in zip(axes, representative_tasks.items()):
     rmsd_file = trajectory_base / task_name / "cdr3_beta_rmsd.xvg"

@@ -235,8 +235,8 @@ def main():
     logger.info("=" * 80)
 
     # Paths
-    trajectory_base = Path("/home/xumy/work/development/AfterMD/input/pbc_1000frames_2step")
-    analysis_output = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis")
+    trajectory_base = Path("/home/xumy/work/development/Immunex/input/pbc_1000frames_2step")
+    analysis_output = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis")
     cluster_output = analysis_output / "cluster_analysis"
     cluster_output.mkdir(exist_ok=True)
 

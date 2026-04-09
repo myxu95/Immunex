@@ -3,7 +3,7 @@
 Example script demonstrating CDR3 RMSD plotting functionality.
 """
 
-from aftermd.utils.plotting import PlotManager
+from immunex.utils.plotting import PlotManager
 from pathlib import Path
 
 def main():
@@ -13,7 +13,7 @@ def main():
     plotter = PlotManager(style='seaborn-v0_8-darkgrid', figsize=(12, 8))
 
     # Define paths
-    base_dir = Path("/home/xumy/work/development/AfterMD")
+    base_dir = Path("/home/xumy/work/development/Immunex")
     summary_csv = base_dir / "output/cdr3_analysis/cdr3_beta_rmsd_summary.csv"
     trajectory_dir = base_dir / "input/pbc_1000frames_2step"
     output_dir = base_dir / "output/cdr3_analysis/plots"

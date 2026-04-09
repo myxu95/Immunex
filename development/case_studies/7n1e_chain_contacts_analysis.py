@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Configuration
-data_dir = Path("/home/xumy/work/development/AfterMD/data/7n1e_1/prod")
+data_dir = Path("/home/xumy/work/development/Immunex/data/7n1e_1/prod")
 processed_dir = data_dir / "pbc_comparison_nojump"  # Use nojump processed trajectory
 
 tpr = processed_dir / "md.tpr"

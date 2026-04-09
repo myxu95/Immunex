@@ -3,7 +3,7 @@
 RMSD Calculator Script for Batch Trajectory Analysis
 
 This script automatically finds all .xtc trajectory files in a specified directory
-and performs RMSD calculations using the AfterMD toolkit.
+and performs RMSD calculations using the Immunex toolkit.
 
 Default behavior:
 - Uses C-alpha atoms (GROMACS group 3) for both fitting and calculation
@@ -29,8 +29,8 @@ import glob
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from aftermd.analysis.trajectory.rmsd import RMSDCalculator
-from aftermd.utils.batch_processor import BatchProcessor
+from immunex.analysis.trajectory.rmsd import RMSDCalculator
+from immunex.utils.batch_processor import BatchProcessor
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

@@ -1,64 +1,63 @@
 # Development Directory
 
-This directory contains experimental code, temporary scripts, and case studies created during development.
+This directory is the experimental surface of the repository. Nothing here is part of the stable product contract unless it is explicitly promoted into `immunex/`, `examples/`, or `docs/`.
 
-## Directory Structure
+## Purpose
 
-### archived_scripts/
-Deprecated scripts preserved for reference.
-- `rmsd_old/` - Legacy RMSD implementations
-- `rmsf_analysis_pipeline_phla.py` - Old RMSF analysis pipeline (merged into batch_whole_protein_rmsf.py)
+Use `development/` for:
 
-### case_studies/
-Scripts for specific case studies with hardcoded paths.
-- `7n1e_chain_contacts_analysis.py` - Chain contact analysis for 7N1E complex
+- exploratory analysis scripts
+- diagnostics and debugging tools
+- case studies with environment-specific assumptions
+- temporary validation code during refactors
+- archived historical material that remains useful for reference
 
-### workspaces/
-Large workspace directories containing experimental data and intermediate results.
+## Subdirectory Semantics
 
-**Important Directories**:
-- `FEL_workspace/` (23GB) - Free Energy Landscape analysis reference implementation
-  - Purpose: Reference for developing aftermd.analysis.free_energy module
-  - Contains complete FEL calculation workflow and validation data
-  - See `FEL_README.md` for details
+### `archived_docs/`, `archived_scripts/`, `archived_utilities/`
+Historical material kept for reference only.
 
-- `allosteric_workspace/` - Allosteric pathway analysis experiments
-- `pattern_analysis/` - Pattern recognition experiments
-- `pymol_visualization/` - PyMOL visualization scripts
-- `cdr3_analysis_toolkit/` - CDR3 specific analysis tools
+### `archived_assets/`
+Bundled historical assets, external snapshots, or one-off source packages kept only for traceability.
 
-### logs/
-Log file archives organized by date.
-- `archive_2026_01/` - January 2026 log files
+### `reports/`
+Implementation summaries, migration reports, and internal writeups that are useful to developers but are not part of the public product documentation set.
 
-### Other Directories
-- `clustering/`, `plotting/`, `utilities/`, `visualization/` - Various experimental scripts and tools
-- `tcr_docking_angle/` - TCR docking angle analysis experiments
+### `diagnostics/`
+One-off debugging and inspection scripts for investigating algorithm behavior, geometry issues, or unexpected outputs.
 
-## Usage Notes
+### `validation/`
+Developer-only validation and environment-check scripts kept outside the product-facing `tests/` suite.
 
-1. **Stability Not Guaranteed** - Code here may change or be removed without notice
-2. **Hardcoded Paths** - case_studies scripts contain environment-specific paths
-3. **Regular Cleanup** - Unused scripts should be moved to archived_scripts/
-4. **Large Files** - workspaces/ directory is excluded from version control
+### `case_studies/`
+Hardcoded or sample-specific investigations.
 
-## Migrating from Development to Production
+### `clustering/`, `plotting/`, `visualization/`, `utilities/`
+Experimental tooling and research support code.
 
-To move a script from development to `scripts/` production:
-- [ ] Remove hardcoded paths
-- [ ] Add command-line argument support
-- [ ] Follow naming conventions (batch_*.py)
-- [ ] Add complete docstrings
-- [ ] Pass code review
+### `validation/angle_refactoring_tests_2026_02/`
+Focused refactor-validation work for the docking-angle module, kept as developer-only validation rather than product test coverage.
 
-## Workspace Management
+### `workspaces/`
+Large research workspaces and embedded external experiments.
 
-**FEL_workspace Importance**:
-- Contains validated reference implementation for FEL analysis
-- Used as blueprint for software module development
-- Do not delete without extracting key algorithms
+## Promotion Rules
 
-**General Workspaces**:
-- Archive completed case studies to external storage
-- Clean up temporary analysis results periodically
-- Document important findings before archiving
+A file should move out of `development/` only when all of the following are true:
+
+- no hardcoded local paths remain
+- the interface is stable enough for repeated use
+- ownership is clear
+- the output contract is defined
+- at least a smoke-level verification path exists
+
+Promotion targets:
+
+- move product code to `immunex/`
+- move supported examples to `examples/`
+- move stable documentation to `docs/`
+- move long-term operations wrappers to `scripts/`
+
+## Boundary Rule
+
+Do not make product code depend on files in `development/`.

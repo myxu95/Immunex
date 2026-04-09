@@ -97,7 +97,7 @@ def watch_progress(base_dir, summary_file, log_file, interval=30):
 
 
 if __name__ == "__main__":
-    base_dir = "/home/xumy/work/development/AfterMD/output/allostery_analysis"
+    base_dir = "/home/xumy/work/development/Immunex/output/allostery_analysis"
     summary_file = f"{base_dir}/mosaic_batch_summary.csv"
     log_file = f"{base_dir}/mosaic_batch.log"
 

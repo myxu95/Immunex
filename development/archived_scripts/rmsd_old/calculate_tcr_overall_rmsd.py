@@ -110,8 +110,8 @@ def main():
     logger.info("=" * 80)
 
     # Paths
-    trajectory_base = Path("/home/xumy/work/development/AfterMD/input/pbc_1000frames_2step")
-    output_dir = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis")
+    trajectory_base = Path("/home/xumy/work/development/Immunex/input/pbc_1000frames_2step")
+    output_dir = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis")
 
     # Load successful tasks from CDR3β summary
     cdr3_summary = output_dir / "cdr3_beta_rmsd_complete_summary.csv"

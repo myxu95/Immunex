@@ -23,7 +23,7 @@ import time
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from aftermd.analysis.allostery import ContactCorrelationAnalyzer
+from immunex.analysis.allostery import ContactCorrelationAnalyzer
 
 logging.basicConfig(
     level=logging.INFO,

@@ -9,7 +9,7 @@ import numpy as np
 from pathlib import Path
 
 # Read RMSF summary
-csv_file = "/home/xumy/work/development/AfterMD/output/rmsf_cdr/batch_whole_protein_rmsf_summary.csv"
+csv_file = "/home/xumy/work/development/Immunex/output/rmsf_cdr/batch_whole_protein_rmsf_summary.csv"
 df = pd.read_csv(csv_file)
 
 # Filter successful analyses
@@ -106,7 +106,7 @@ for cdr_label in cdr_labels:
     print(f"  {cdr_label:15s}: {sample_value:.4f} nm (median: {median_value:.4f}, diff: {diff:+.4f})")
 
 # Find the structure file
-task_dir = Path(f"/home/xumy/work/development/AfterMD/output/rmsf_cdr/{best_task}")
+task_dir = Path(f"/home/xumy/work/development/Immunex/output/rmsf_cdr/{best_task}")
 if task_dir.exists():
     print(f"\nStructure files location:")
     print(f"  Task directory: {task_dir}")

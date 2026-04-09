@@ -15,8 +15,8 @@ plt.style.use('seaborn-v0_8-paper')
 sns.set_palette("husl")
 
 # Paths
-comparison_csv = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/tcr_cdr3_comparison.csv")
-output_dir = Path("/home/xumy/work/development/AfterMD/output/cdr3_analysis/figures")
+comparison_csv = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/tcr_cdr3_comparison.csv")
+output_dir = Path("/home/xumy/work/development/Immunex/output/cdr3_analysis/figures")
 output_dir.mkdir(exist_ok=True)
 
 # Load data

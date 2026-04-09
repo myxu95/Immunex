@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Status
-**Development**: Local development at `/home/xumy/work/development/AfterMD`
+**Development**: Local development at `/home/xumy/work/development/Immunex`
 **Testing**: All tests run locally - no remote server deployment needed
 **Deployment**: User will manually deploy to server for production testing
 
@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. 创建文件时的命名要兼顾在整体程序中的功能和职责，也要保持精简
 4. 测试脚本和一次性分析脚本应放在development/目录，不要污染scripts/
 5. 重复功能的脚本应该整合，通过参数控制不同策略，而不是创建多个版本
+6. **禁止创建临时markdown报告文件**：如无必要，不要写markdown文件作为短期任务汇报（如UPDATE_2026-xx-xx.md、SUMMARY_xxx.md等），这会让项目变得混乱。应该直接在对话中汇报结果，或将重要信息更新到已有文档中
 
 ## 文件命名规范
 ### 处理脚本命名规则
@@ -118,19 +119,400 @@ pytest tests/test_trajectory.py
 ### Code Quality
 ```bash
 # Format code
-black aftermd/
-isort aftermd/
+black immunex/
+isort immunex/
 
 # Lint code
-flake8 aftermd/
-pylint aftermd/
+flake8 immunex/
+pylint immunex/
 ```
 
 ## Architecture
 
+### 四层架构设计 (Layered Architecture)
+
+Immunex 采用分层架构设计，确保模块职责清晰、可复用性高、易于维护。
+
+#### 第一层：Core Modules（原子功能模块）
+
+**定义**: 最小可复用分析单元，提供单一、独立的功能。
+
+**核心模块示例**:
+- `preprocess_trajectory` - 轨迹预处理（PBC校正）
+- `compute_rmsd` - RMSD计算
+- `compute_rmsf` - RMSF计算
+- `compute_contacts` - 接触分析
+- `compute_distance` - 距离测量
+- `cluster_trajectory` - 轨迹聚类
+- `extract_frames` - 帧提取
+
+**设计原则**:
+1. **单一职责**: 每个模块只做一件事，并做好
+2. **输入输出标准化**: 使用 dataclass 定义输入/输出结构
+3. **上下文无关**: 不关心上游是谁、下游是谁、是否批处理、是否来自REST API
+
+**示例**: `compute_rmsd` 模块
+```python
+class RMSDCalculator:
+    def calculate(self,
+                  topology: str,
+                  trajectory: str,
+                  selection: str,
+                  reference: Optional[str] = None) -> RMSDResult:
+        """
+        职责：计算RMSD
+
+        它不该关心：
+        - 是不是 batch 跑的
+        - 是不是来自 REST2 模拟
+        - 后面要不要画图
+        - 是不是 agent 调用的
+
+        只关心：
+        - 接收处理好的轨迹/拓扑/selection
+        - 计算 RMSD
+        - 返回结果文件路径、统计值、元数据
+        """
+        pass
+```
+
+---
+
+#### 第二层：Pipeline Steps / Workflow Nodes（工作流节点）
+
+**定义**: 对原子模块的轻量封装，负责流程控制而非实际分析。
+
+**节点示例**:
+- `PreprocessNode` - 预处理节点
+- `RMSDNode` - RMSD计算节点
+- `ContactNode` - 接触分析节点
+- `QualityCheckNode` - 质量检查节点
+
+**节点职责**:
+1. **校验输入上下文**: 检查必需的输入是否存在
+2. **调用底层模块**: 委托给 Core Module 执行实际工作
+3. **记录输出到 context**: 将结果写入 pipeline context
+4. **处理异常**: 失败处理、跳过逻辑、缓存机制
+
+**示例**: RMSDNode
+```python
+class RMSDNode:
+    """RMSD计算节点 - 不亲自做分析，而是编排"""
+
+    def execute(self, context: PipelineContext) -> PipelineContext:
+        # 1. 校验输入
+        if 'trajectory_processed' not in context:
+            raise ValueError("Missing processed trajectory")
+
+        # 2. 调用底层模块
+        calculator = RMSDCalculator()
+        result = calculator.calculate(
+            topology=context['topology'],
+            trajectory=context['trajectory_processed'],
+            selection=context['selections']['protein']
+        )
+
+        # 3. 记录输出
+        context['results']['rmsd'] = {
+            'output_file': result.output_file,
+            'mean': result.mean_rmsd,
+            'std': result.std_rmsd
+        }
+
+        # 4. 处理失败（可选）
+        if not result.success:
+            context['errors'].append(f"RMSD failed: {result.error_message}")
+
+        return context
+```
+
+---
+
+#### 第三层：Workflow / Pipeline Orchestration（编排层）
+
+**定义**: 决定节点执行顺序、数据流动、依赖关系和并行策略。
+
+**编排职责**:
+1. **定义执行顺序**: 哪些节点按什么顺序执行
+2. **数据流管理**: 节点之间的数据如何流动
+3. **失败策略**: 某个节点失败后怎么办
+4. **并行调度**: 哪些节点可以并行执行
+5. **依赖解析**: 哪些节点依赖前置结果
+
+**线性流程示例**:
+```python
+class StandardTrajectoryPipeline:
+    """标准轨迹分析流程"""
+
+    def __init__(self):
+        self.nodes = [
+            LoadInputNode(),
+            PreprocessNode(),
+            AlignNode(),
+            RMSDNode(),
+            RMSFNode(),
+            ContactNode(),
+            ReportNode()
+        ]
+
+    def execute(self, context: PipelineContext) -> PipelineContext:
+        for node in self.nodes:
+            context = node.execute(context)
+            if context.should_stop:
+                break
+        return context
+```
+
+**分叉流程示例**:
+```python
+class AdvancedAnalysisPipeline:
+    """高级分析流程 - 支持分叉和并行"""
+
+    def execute(self, context: PipelineContext) -> PipelineContext:
+        # 预处理（必需）
+        context = PreprocessNode().execute(context)
+
+        # 并行执行多个分析
+        parallel_nodes = [
+            RMSDNode(),
+            RMSFNode(),
+            ClusteringNode(),
+            ContactMapNode()
+        ]
+
+        with ProcessPoolExecutor(max_workers=4) as executor:
+            futures = [
+                executor.submit(node.execute, context.copy())
+                for node in parallel_nodes
+            ]
+            results = [f.result() for f in futures]
+
+        # 合并结果
+        context = self.merge_results(results)
+        return context
+```
+
+**动态流程示例**:
+```python
+class AdaptivePipeline:
+    """自适应流程 - 根据质量检查结果动态决定"""
+
+    def execute(self, context: PipelineContext) -> PipelineContext:
+        # 质量检查
+        context = QualityCheckNode().execute(context)
+
+        # 根据质量等级选择不同流程
+        if context['quality_grade'] == 'A':
+            # 高质量：完整分析
+            return self.full_analysis(context)
+        elif context['quality_grade'] in ['B', 'C']:
+            # 中等质量：基础分析
+            return self.basic_analysis(context)
+        else:
+            # 低质量：仅报告问题
+            return self.report_issues(context)
+```
+
+**关键设计原则**:
+- 不要把流程逻辑写死在每个模块里
+- 流程配置应该独立存在（代码或配置文件）
+- 支持流程的动态组合和重用
+
+---
+
+#### 第四层：Configuration / User Interface（配置与入口层）
+
+**定义**: 用户如何驱动 pipeline，提供多种入口方式。
+
+**入口方式**:
+
+1. **Python API** (编程接口)
+```python
+from immunex.pipeline import StandardTrajectoryPipeline
+from immunex.core import PipelineContext
+
+context = PipelineContext(
+    system_id="1ao7",
+    topology="data/1ao7/md.tpr",
+    trajectory_raw="data/1ao7/md.xtc"
+)
+
+pipeline = StandardTrajectoryPipeline()
+result = pipeline.execute(context)
+```
+
+2. **CLI** (命令行接口)
+```bash
+immunex run-pipeline \
+    --config config.yaml \
+    --system 1ao7 \
+    --topology data/1ao7/md.tpr \
+    --trajectory data/1ao7/md.xtc
+```
+
+3. **YAML Config** (配置文件驱动)
+```yaml
+# config.yaml
+pipeline: standard_trajectory
+
+input:
+  system_id: 1ao7
+  topology: data/1ao7/md.tpr
+  trajectory_raw: data/1ao7/md.xtc
+
+nodes:
+  - name: preprocess
+    enabled: true
+  - name: rmsd
+    params:
+      selection: "protein"
+  - name: rmsf
+    params:
+      selection: "backbone"
+
+output:
+  directory: ./results/1ao7
+```
+
+4. **Web UI** (Web界面，未来扩展)
+```
+用户通过网页上传文件、选择分析模块、查看结果
+```
+
+5. **Agent调用** (AI Agent，未来扩展)
+```python
+# Agent可以根据用户自然语言指令动态构建pipeline
+agent.run("分析1ao7的RMSD和RMSF，如果RMSD不收敛就做聚类")
+```
+
+**关键原则**:
+- 这一层不要和底层分析逻辑耦合
+- 每种入口方式都是对 Pipeline 的薄封装
+- 配置验证在这一层完成
+
+---
+
+### 上下文传递机制 (Context Passing)
+
+**问题**: 避免"文件路径地狱"
+
+**错误做法**:
+```python
+# 模块 A 输出 xxx_processed.xtc
+# 模块 B 手工去读这个路径
+# 模块 C 再拼字符串找 xxx_rmsd.xvg
+# 模块 D 再假设文件名规则
+# 结果：路径硬编码、命名冲突、维护困难
+```
+
+**正确做法**: 使用 **PipelineContext** 统一管理数据
+
+#### PipelineContext 设计
+
+```python
+from dataclasses import dataclass, field
+from typing import Dict, Any, Optional
+from pathlib import Path
+
+@dataclass
+class PipelineContext:
+    """Pipeline上下文 - 统一管理所有数据和状态"""
+
+    # 系统标识
+    system_id: str
+
+    # 输入文件
+    topology: str
+    trajectory_raw: str
+    structure_pdb: Optional[str] = None
+
+    # 处理后的文件
+    trajectory_processed: Optional[str] = None
+    trajectory_aligned: Optional[str] = None
+
+    # 原子选择
+    selections: Dict[str, str] = field(default_factory=dict)
+    # 示例: {'protein': 'protein', 'backbone': 'name CA C N O'}
+
+    # 分析结果
+    results: Dict[str, Any] = field(default_factory=dict)
+    # 示例: {'rmsd': {...}, 'rmsf': {...}}
+
+    # 元数据
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    # 示例: {'timestamp': '2026-03-16', 'version': '1.0.0'}
+
+    # 输出目录
+    output_dir: Optional[str] = None
+
+    # 错误和警告
+    errors: list = field(default_factory=list)
+    warnings: list = field(default_factory=list)
+
+    # 流程控制
+    should_stop: bool = False
+
+    def get_output_path(self, filename: str) -> str:
+        """获取输出文件路径"""
+        if self.output_dir is None:
+            self.output_dir = f"./results/{self.system_id}"
+        Path(self.output_dir).mkdir(parents=True, exist_ok=True)
+        return str(Path(self.output_dir) / filename)
+```
+
+#### 使用示例
+
+```python
+# 初始化 context
+context = PipelineContext(
+    system_id="1ao7",
+    topology="data/1ao7/md.tpr",
+    trajectory_raw="data/1ao7/md.xtc",
+    selections={
+        'protein': 'protein',
+        'backbone': 'name CA C N O',
+        'tcr': 'chainID D E'
+    }
+)
+
+# 预处理节点
+preprocessor = PreprocessNode()
+context = preprocessor.execute(context)
+# context.trajectory_processed = "./results/1ao7/md_processed.xtc"
+
+# RMSD节点（无需手动指定路径）
+rmsd_node = RMSDNode()
+context = rmsd_node.execute(context)
+# context.results['rmsd'] = {
+#     'output_file': './results/1ao7/rmsd.xvg',
+#     'mean': 2.34,
+#     'std': 0.56
+# }
+
+# RMSF节点（自动从context获取所需数据）
+rmsf_node = RMSFNode()
+context = rmsf_node.execute(context)
+# context.results['rmsf'] = {...}
+
+# 访问结果
+print(f"RMSD mean: {context.results['rmsd']['mean']} nm")
+print(f"Output: {context.results['rmsd']['output_file']}")
+```
+
+#### 优势总结
+
+1. **无路径硬编码**: 所有路径由 context 统一管理
+2. **类型安全**: 使用 dataclass，IDE 可以自动补全
+3. **易于测试**: 可以构造 mock context 进行单元测试
+4. **状态透明**: 所有中间结果都在 context 中可见
+5. **易于序列化**: 可以保存/恢复 context 状态
+6. **错误追踪**: 统一收集错误和警告信息
+
+---
+
 ### Project Structure
 ```
-aftermd/
+immunex/
 ├── __init__.py                 # Main package imports
 ├── utils/                      # Utility modules (tools)
 │   ├── __init__.py
@@ -235,6 +617,304 @@ aftermd/
 - BatchProcessor coordinates parallel execution across all stages
 - Configurable workers for optimal performance
 
+---
+
+## 模块设计标准
+
+所有核心功能模块（如PBCProcessor、RMSDCalculator等）必须遵循以下6大设计原则，确保模块的健壮性和可维护性：
+
+### 1️⃣ 输入明确 (Clear Inputs)
+
+**原则**:
+- 所有参数必须有类型注解 (type hints)
+- 必需参数和可选参数明确区分
+- 提供输入验证机制
+- 参数有合理的默认值
+
+**推荐实现**:
+```python
+from dataclasses import dataclass
+from typing import Optional
+from pathlib import Path
+
+@dataclass
+class ProcessingInput:
+    """标准化输入参数"""
+    # 必需参数
+    trajectory: str
+    topology: str
+    output: str
+
+    # 可选参数（有默认值）
+    method: str = "2step"
+    dt: Optional[float] = None
+    verbose: bool = False
+
+    def validate(self) -> None:
+        """验证输入参数"""
+        if not Path(self.trajectory).exists():
+            raise FileNotFoundError(f"Trajectory not found: {self.trajectory}")
+        if not Path(self.topology).exists():
+            raise FileNotFoundError(f"Topology not found: {self.topology}")
+        if self.method not in ["2step", "3step"]:
+            raise ValueError(f"Invalid method: {self.method}")
+```
+
+### 2️⃣ 输出明确 (Clear Outputs)
+
+**原则**:
+- 返回结构化数据而非简单字符串/None
+- 包含处理统计信息
+- 包含所有生成的文件路径
+- 包含处理元数据（时间、版本等）
+- 包含成功/失败状态
+
+**推荐实现**:
+```python
+@dataclass
+class ProcessingResult:
+    """标准化输出结果"""
+    success: bool                          # 是否成功
+    output_file: str                       # 主输出文件
+    temporary_files: List[str] = None      # 临时文件列表
+
+    # 统计信息
+    processing_stats: Dict[str, Any] = None
+    # 示例: {'n_frames': 1000, 'processing_time_sec': 45.2}
+
+    # 元数据
+    metadata: Dict[str, Any] = None
+    # 示例: {'timestamp': '2026-03-16', 'version': '0.1.0'}
+
+    # 错误信息（如果失败）
+    error_message: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """支持序列化"""
+        return asdict(self)
+```
+
+### 3️⃣ 副作用明确 (Clear Side Effects)
+
+**原则**:
+- 明确记录所有文件操作（创建、修改、删除）
+- 明确记录所有外部命令调用
+- 提供副作用报告
+- 支持dry-run模式（可选）
+
+**推荐实现**:
+```python
+@dataclass
+class SideEffectTracker:
+    """副作用跟踪器"""
+    files_created: List[str] = field(default_factory=list)
+    files_deleted: List[str] = field(default_factory=list)
+    commands_executed: List[Dict] = field(default_factory=list)
+
+    def track_file_creation(self, filepath: str):
+        self.files_created.append(filepath)
+
+    def track_command(self, command: List[str]):
+        self.commands_executed.append({
+            'command': ' '.join(command),
+            'timestamp': datetime.now().isoformat()
+        })
+```
+
+### 4️⃣ 错误明确 (Clear Errors)
+
+**原则**:
+- 定义具体的异常类型
+- 提供详细的错误信息和上下文
+- 区分用户错误和系统错误
+- 提供错误恢复建议
+
+**推荐实现**:
+```python
+class ImmunexError(Exception):
+    """Immunex基础异常"""
+    pass
+
+class InputValidationError(ImmunexError):
+    """输入验证错误（用户错误）"""
+    def __init__(self, param_name: str, value: Any, reason: str):
+        super().__init__(f"Invalid {param_name}: {reason} (got: {value})")
+
+class ProcessingError(ImmunexError):
+    """处理错误（系统错误）"""
+    def __init__(self, step: str, reason: str, suggestion: str = None):
+        msg = f"Failed at {step}: {reason}"
+        if suggestion:
+            msg += f"\nSuggestion: {suggestion}"
+        super().__init__(msg)
+```
+
+**错误处理模式**:
+```python
+def process(self, input_params: ProcessingInput) -> ProcessingResult:
+    try:
+        input_params.validate()  # 可能抛出InputValidationError
+        result = self._do_processing(...)
+        return ProcessingResult(success=True, output_file=result)
+
+    except InputValidationError as e:
+        # 用户错误 - 返回失败结果
+        return ProcessingResult(
+            success=False,
+            error_message=str(e)
+        )
+    except Exception as e:
+        # 系统错误 - 记录日志并返回失败结果
+        logger.exception("Unexpected error")
+        return ProcessingResult(
+            success=False,
+            error_message=f"System error: {str(e)}"
+        )
+```
+
+### 5️⃣ 可独立测试 (Testable)
+
+**原则**:
+- 每个模块必须有单元测试
+- 测试覆盖率 >= 80%
+- 测试输入验证、成功场景、失败场景
+- 支持mock外部依赖（GROMACS等）
+
+**推荐测试结构**:
+```python
+class TestProcessor:
+    @pytest.fixture
+    def processor(self):
+        return Processor()
+
+    def test_input_validation_missing_file(self):
+        """测试：缺失文件应抛出异常"""
+        with pytest.raises(FileNotFoundError):
+            input_params.validate()
+
+    def test_processing_success(self, monkeypatch):
+        """测试：成功处理场景"""
+        # Mock外部依赖
+        monkeypatch.setattr(...)
+        result = processor.process(valid_input)
+        assert result.success is True
+
+    def test_processing_failure(self):
+        """测试：失败场景处理"""
+        result = processor.process(invalid_input)
+        assert result.success is False
+        assert result.error_message is not None
+```
+
+### 6️⃣ 可被调度 (Schedulable)
+
+**原则**:
+- 支持异步/并行调用
+- 提供进度回调机制
+- 支持取消操作
+- 可被pipeline统一调度
+
+**推荐实现**:
+```python
+class SchedulableProcessor:
+    """可调度处理器基类"""
+
+    def __init__(self):
+        self._cancel_flag = threading.Event()
+        self.progress_callback: Optional[Callable] = None
+
+    def set_progress_callback(self, callback: Callable[[float, str], None]):
+        """设置进度回调"""
+        self.progress_callback = callback
+
+    def _report_progress(self, progress: float, message: str):
+        """报告进度 (0.0-1.0)"""
+        if self.progress_callback:
+            self.progress_callback(progress, message)
+
+    def cancel(self):
+        """取消操作"""
+        self._cancel_flag.set()
+
+    def is_cancelled(self) -> bool:
+        return self._cancel_flag.is_set()
+
+    def process(self, input_params: Any) -> Any:
+        """处理入口 - 支持进度报告和取消"""
+        if self.is_cancelled():
+            return ProcessingResult(success=False, error_message="Cancelled")
+
+        self._report_progress(0.0, "Starting...")
+        # ... 处理逻辑 ...
+        self._report_progress(0.5, "Half done...")
+        # ... 继续处理 ...
+        self._report_progress(1.0, "Completed")
+```
+
+**Pipeline调度示例**:
+```python
+from concurrent.futures import ProcessPoolExecutor
+
+class PipelineScheduler:
+    def submit_task(self, task_id: str, processor: SchedulableProcessor,
+                   input_params: Any) -> Future:
+        """提交任务到调度器"""
+        with ProcessPoolExecutor() as executor:
+            future = executor.submit(processor.process, input_params)
+            return future
+```
+
+---
+
+### 设计检查清单
+
+在开发新模块或重构现有模块时，使用此清单确保符合标准：
+
+- [ ] **输入明确**
+  - [ ] 使用dataclass定义输入结构
+  - [ ] 所有参数有类型注解
+  - [ ] 实现validate()方法
+  - [ ] 有合理的默认值
+
+- [ ] **输出明确**
+  - [ ] 使用dataclass定义输出结构
+  - [ ] 包含success字段
+  - [ ] 包含processing_stats和metadata
+  - [ ] 支持to_dict()序列化
+
+- [ ] **副作用明确**
+  - [ ] 记录文件操作
+  - [ ] 记录命令执行
+  - [ ] 文档中列出所有副作用
+
+- [ ] **错误明确**
+  - [ ] 定义专用异常类
+  - [ ] 错误信息包含上下文和建议
+  - [ ] 返回结构化错误信息
+
+- [ ] **可独立测试**
+  - [ ] 单元测试覆盖率 >= 80%
+  - [ ] 测试输入验证
+  - [ ] 测试成功和失败场景
+  - [ ] 支持mock外部依赖
+
+- [ ] **可被调度**
+  - [ ] 支持进度回调
+  - [ ] 支持取消操作
+  - [ ] 可异步/并行调用
+
+---
+
+### 适用范围
+
+本标准适用于所有Immunex核心模块，包括：
+- PBCProcessor
+- RMSDCalculator
+- QualityAssessmentPipeline
+- ContactAnalyzer
+- AngleAnalyzer
+- 以及未来新增的所有处理模块
+
 ## Notes
 
 -脚本中避免出现中文和emoji
@@ -261,7 +941,7 @@ Python
 ## 核心功能部分：
 ### MD Production质量分析模块
 
-MD Production质量分析模块是AfterMD的核心质量控制功能，用于自动检测MD模拟的完整性、正确性和数据质量。
+MD Production质量分析模块是Immunex的核心质量控制功能，用于自动检测MD模拟的完整性、正确性和数据质量。
 
 #### 主要功能
 
@@ -378,7 +1058,7 @@ analysis/
 #### 使用示例
 
 ```python
-from aftermd.analysis.quality import (
+from immunex.analysis.quality import (
     MDCompletenessChecker, StructureValidator,
     EnergyQualityChecker, BatchTracker, QualityReporter
 )
@@ -484,8 +1164,8 @@ See `ARCHITECTURE.md` for detailed workflow diagrams and module specifications.
 
 **状态**: Phase 1 核心功能已实现并测试通过
 
-**实施总结**: `development/ANGLES_IMPLEMENTATION_SUMMARY.md`
-**设计文档**: `docs/ANGLE_MODULE_REDESIGN.md`
+**实施总结**: `development/reports/ANGLES_IMPLEMENTATION_SUMMARY.md`
+**设计文档**: `docs/design/angles/ANGLE_MODULE_REDESIGN.md`
 **归档代码**: `development/archived_scripts/README_ANGLES_ARCHIVE.md`
 
 专门用于分子动力学轨迹中的角度相关分析，特别针对TCR-pMHC复合物对接姿态研究。
@@ -527,7 +1207,7 @@ analysis/angles/
    - ✅ MD轨迹时间演化
    - ✅ 角度统计和稳定性分析
 
-4. **集成AfterMD流程**
+4. **集成Immunex流程**
    - ✅ 统一的输出格式 (CSV/XVG)
    - ⏳ CLI命令接口 (待实现)
    - ⏳ 批处理脚本 (待实现)
@@ -555,7 +1235,7 @@ analysis/angles/
 **使用示例**:
 ```python
 # MD轨迹对接角度分析
-from aftermd.analysis.angles import DockingAngleAnalyzer
+from immunex.analysis.angles import DockingAngleAnalyzer
 
 # 初始化分析器
 analyzer = DockingAngleAnalyzer('md.tpr', 'md_pbc.xtc')
@@ -598,7 +1278,7 @@ print(f"Swing: {np.mean(swing):.2f} ± {np.std(swing):.2f}°")
 **测试状态**: 7/7 单元测试通过 (100%)
 
 **文档**:
-- 实施总结: `development/ANGLES_IMPLEMENTATION_SUMMARY.md`
+- 实施总结: `development/reports/ANGLES_IMPLEMENTATION_SUMMARY.md`
 - 使用示例: `examples/docking_angles_usage.py`
 - 单元测试: `development/test_angle_modules.py`
 
@@ -656,7 +1336,7 @@ analysis/interface/
 
 **使用示例**:
 ```python
-from aftermd.analysis.interface import (
+from immunex.analysis.interface import (
     BuriedSurfaceCalculator,
     ContactResidueAnalyzer,
     ContactHeatmapGenerator
@@ -699,7 +1379,7 @@ contact_matrix = heatmap_gen.generate_and_plot(
 
 集成角度分析和界面分析的统一批量处理接口。
 
-**文件**: `aftermd/utils/batch_analyzer.py` (~400行)
+**文件**: `immunex/utils/batch_analyzer.py` (~400行)
 
 **核心类**:
 ```python
@@ -729,7 +1409,7 @@ class BatchAnalyzer:
 
 **使用示例**:
 ```python
-from aftermd.utils import BatchAnalyzer
+from immunex.utils import BatchAnalyzer
 
 tasks = [
     {
@@ -850,7 +1530,7 @@ analysis/allostery/
 
 **使用示例**:
 ```python
-from aftermd.analysis.allostery import ContactCorrelationAnalyzer
+from immunex.analysis.allostery import ContactCorrelationAnalyzer
 
 # 初始化分析器
 analyzer = ContactCorrelationAnalyzer("md.tpr", "md_pbc.xtc")
@@ -912,4 +1592,143 @@ allostery_analysis/
   - mkvmd_PairContact.sh
 
 完全用Python/MDAnalysis重新实现，无需VMD依赖。
+
+---
+
+## 🚧 重构计划 (2026-03)
+
+### 当前架构问题
+
+**现有batch实现的主要问题**:
+1. **职责混乱**: 业务逻辑和批处理逻辑紧耦合
+2. **代码重复**: 10+ batch脚本重复实现任务发现、并行执行
+3. **路径管理混乱**: 字符串拼接路径，模块间靠文件名约定传递数据
+4. **难以组合**: 无法灵活组合多个分析步骤
+5. **缺少中间层**: 直接从Core跳到Batch，缺少Pipeline Nodes和Orchestration层
+
+### 重构目标
+
+**目标**: 将现有系统重构为完整的四层架构
+
+```
+Layer 4: Configuration / UI      ← CLI, YAML, Python API
+          ↓
+Layer 3: Pipeline Orchestration  ← 流程编排，依赖管理，并行调度
+          ↓
+Layer 2: Pipeline Nodes          ← 轻量封装，上下文管理
+          ↓
+Layer 1: Core Modules            ← 原子功能，单一职责
+```
+
+### 实施策略
+
+**核心原则**:
+- ✅ **渐进式重构**: 不推倒重来，逐步迁移
+- ✅ **向后兼容**: 保留现有脚本，新旧并存
+- ✅ **先核心后边缘**: 先重构高频使用的模块
+- ✅ **测试驱动**: 每个阶段都有单元测试和集成测试
+
+**实施阶段** (共12周):
+1. **Phase 1** (第1周): 基础设施层 - PipelineContext, PipelineNode基类
+2. **Phase 2** (第2-3周): Core Modules重构 - 标准化输入/输出
+3. **Phase 3** (第4周): Pipeline Nodes层 - 创建节点封装
+4. **Phase 4** (第5周): Pipeline Orchestration - 编排器和BatchExecutor
+5. **Phase 5** (第6周): Configuration Layer - YAML配置，CLI命令
+6. **Phase 6** (第7-10周): 迁移现有脚本 - 逐步迁移10+ batch脚本
+7. **Phase 7** (第11周): 文档和培训
+8. **Phase 8** (第12周): 性能优化和稳定性
+
+### 详细方案
+
+**完整文档**:
+- 📄 `docs/archive/plans/REFACTORING_PLAN_2026_03.md` - 详细实施方案
+- ✅ `docs/archive/plans/REFACTORING_CHECKLIST.md` - 进度检查清单
+
+**核心改进**:
+
+1. **PipelineContext统一数据传递**
+```python
+@dataclass
+class PipelineContext:
+    system_id: str
+    topology: str
+    trajectory_raw: str
+    trajectory_processed: Optional[str] = None
+    selections: Dict[str, str] = field(default_factory=dict)
+    results: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    output_dir: Optional[str] = None
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    should_stop: bool = False
+```
+
+2. **PipelineNode标准化业务逻辑**
+```python
+class RMSDNode(PipelineNode):
+    def execute(self, context: PipelineContext) -> PipelineContext:
+        # 1. 校验输入
+        # 2. 调用底层模块
+        # 3. 记录输出到context
+        # 4. 处理错误
+        return context
+```
+
+3. **通用BatchExecutor**
+```python
+executor = BatchExecutor(max_workers=4)
+results = executor.execute_pipeline(
+    tasks=discover_tasks(base_dir),
+    pipeline=StandardTrajectoryPipeline()
+)
+# ✅ 一套批处理逻辑支持所有分析
+```
+
+4. **灵活的Pipeline组合**
+```python
+class StandardTrajectoryPipeline(Pipeline):
+    nodes = [
+        QualityCheckNode(),
+        PreprocessNode(),
+        RMSDNode(),
+        RMSFNode(),
+        ContactAnalysisNode(),
+        ReportNode()
+    ]
+```
+
+5. **多种配置方式**
+```bash
+# CLI
+immunex pipeline run --config standard_trajectory.yaml
+
+# Python API
+pipeline = StandardTrajectoryPipeline()
+result = pipeline.execute(context)
+
+# YAML配置
+pipeline: standard_trajectory
+nodes:
+  - name: preprocess
+    params: {method: "3step", dt: 10.0}
+  - name: rmsd
+    params: {selection: "protein"}
+```
+
+### 当前状态
+
+**状态**: 📋 计划阶段 - 未开始实施
+**优先级**: 🔴 高 - 影响项目长期可维护性
+**预计时间**: 12周 (2026-03-16 至 2026-06-01)
+
+**下一步行动**:
+1. Review重构方案，确认技术路线
+2. 开始Phase 1: 创建PipelineContext和基础设施
+3. 为Phase 1编写单元测试
+
+### 参与方式
+
+**问题反馈**: 创建GitHub Issue标记 `refactoring` 标签
+**技术讨论**: 参与项目讨论区
+**贡献代码**: 按照 `docs/archive/plans/REFACTORING_CHECKLIST.md` 认领任务
 

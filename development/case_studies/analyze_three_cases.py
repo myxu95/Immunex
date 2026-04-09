@@ -28,8 +28,8 @@ CASES = [
     "3d3v_1"    # Medium size (28 clusters, mean_corr=0.442)
 ]
 
-base_dir = Path("/home/xumy/work/development/AfterMD/output/allostery_analysis")
-output_dir = Path("/home/xumy/work/development/AfterMD/output/allostery_analysis/three_case_analysis")
+base_dir = Path("/home/xumy/work/development/Immunex/output/allostery_analysis")
+output_dir = Path("/home/xumy/work/development/Immunex/output/allostery_analysis/three_case_analysis")
 output_dir.mkdir(parents=True, exist_ok=True)
 
 logger.info("="*80)

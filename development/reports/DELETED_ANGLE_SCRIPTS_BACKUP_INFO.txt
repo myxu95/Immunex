@@ -1,0 +1,41 @@
+# 角度脚本清理记录
+# 删除时间: $(date '+%Y-%m-%d %H:%M:%S')
+# 执行原因: 保留核心模块，删除旧工具和重复代码
+
+## 已删除的文件清单
+
+### 1. 旧C++工具 (2.3MB)
+development/tcr_docking_angle/
+- 功能: C++实现的TCR-pMHC对接角度计算
+- 角度定义: CrossingAngle + IncidentAngle
+- 状态: 已被 aftermd/analysis/angles/ 替代
+
+### 2. 归档备份 (2.4MB)
+development/archived_scripts/angles_old_20260123/
+development/archived_scripts/tcr_docking_angle_backup_20260123/
+development/archived_scripts/clustering_backup_20260123/
+- 状态: 2026-01-23 已归档的旧代码
+
+### 3. VMD参考脚本 (2.9MB)
+development/angle_analysis/
+- 功能: VMD/TCL脚本，算法原型
+- 状态: 算法已迁移到Python核心模块
+
+## 保留的核心模块
+- aftermd/analysis/angles/ (生产模块)
+- development/test_angle_modules.py (单元测试)
+- development/demo_angle_analysis.py (演示)
+- development/workspaces/cdr3_analysis_toolkit/ (待整合)
+- development/clustering/step1_cluster_static_angles.py (待整合)
+
+## 恢复方法
+如果需要恢复，可以从git历史恢复：
+git log --all --full-history -- "development/tcr_docking_angle/*"
+git checkout <commit_hash> -- development/tcr_docking_angle/
+
+## 重要输出数据位置
+output/docking_angle/ 目录的200+任务结果保留
+- 这些是用旧C++工具生成的历史数据
+- 角度定义: CrossingAngle/IncidentAngle
+- 标注文件: output/docking_angle/LEGACY_NOTICE.txt
+

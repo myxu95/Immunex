@@ -15,7 +15,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from aftermd.utils import IntelligentChainIdentifier, PDBSequenceExtractor
+from immunex.utils import IntelligentChainIdentifier, PDBSequenceExtractor
 
 def test_chain_identification(pdb_file: str):
     """Test chain identification with new strategy."""

@@ -19,7 +19,7 @@ from datetime import datetime
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from aftermd.analysis.comparative_analysis import create_comparative_analyzer
+from immunex.analysis.comparative_analysis import create_comparative_analyzer
 
 
 def setup_logging(log_level: str = "INFO"):

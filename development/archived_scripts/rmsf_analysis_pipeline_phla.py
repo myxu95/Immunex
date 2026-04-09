@@ -7,7 +7,7 @@ Complete RMSF Analysis Pipeline for pHLA-TCR Trajectories
 2. 按链RMSF (Per-Chain RMSF) - 5个链分别分析
 3. CDR3 RMSF (CDR3-Specific RMSF) - TCR CDR3区域
 
-Author: AfterMD Development Team
+Author: Immunex Development Team
 Date: 2025-12-09
 """
 

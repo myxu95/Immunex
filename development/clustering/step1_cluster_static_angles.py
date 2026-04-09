@@ -15,7 +15,7 @@ import numpy as np
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from aftermd.analysis.angles import AngleClusterer
+from immunex.analysis.angles import AngleClusterer
 
 
 def main():
