@@ -1,0 +1,183 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# celery beat schedule file
+celerybeat-schedule
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Immunex specific ignores
+# Temporary analysis results
+**/analysis_results/
+**/trajectory_analysis/
+**/comparative_analysis/
+**/quality_check_results/
+**/slurm_scripts/
+
+# Molecular dynamics files
+*.xtc
+*.trr
+*.tpr
+*.gro
+*.pdb
+*.ndx
+*.xvg
+*.edr
+*.mdp
+
+# SLURM output files
+*.out
+*.err
+slurm-*.out
+
+# Temporary files
+**/temp/
+**/tmp/
+**/.tmp/
+*.tmp
+*.temp
+*~
+
+# Backup files
+*.bak
+*.backup
+*_backup
+
+# Generated documentation
+docs/_build//input/
+
+# Workspace directories (large analysis results)
+*workspace/
+*_workspace/
+development/workspaces/
+development/logs/
+
+# Data directories
+input/
+output/
+results/
+tests/
+test_output/
+test_batch/
+test_allostery_peptide/
+hla_library
+test_data/
+development/tcr_docking_angle/tcr_docking_angle/
+development/test_output/
+
+# Claude Code workspace
+.codex
+
+# Temporary version markers
+=*

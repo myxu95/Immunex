@@ -1,0 +1,4 @@
+display_name: Reporter Query
+short_description: Answer lightweight lookup questions from Immunex analysis outputs.
+default_prompt: >-
+  Use this skill to answer short, direct single-system questions from Immunex summaries and digests.

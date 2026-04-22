@@ -1,0 +1,96 @@
+# Immunex PBC-Quality Pipeline Configuration
+# Default configuration for PBC processing and quality assessment
+
+# Pipeline settings
+pipeline:
+  # PBC correction method: "2step" (recommended) or "3step" (standard)
+  pbc_method: "2step"
+
+  # Time step for output trajectory (ps, optional)
+  # If not specified, uses original trajectory timestep
+  dt: 100.0
+
+  # GROMACS executable command
+  gmx_executable: "gmx"
+
+# Quality check settings
+quality_check:
+  # Enable Post-PBC validation
+  enable_post_pbc_validation: true
+
+  # Enable RMSD convergence analysis
+  enable_rmsd_convergence: true
+
+  # MDAnalysis selection string for RMSD calculation
+  rmsd_selection: "backbone"
+
+  # Post-PBC validation thresholds
+  post_pbc_thresholds:
+    # Maximum allowed center-of-mass drift (nm)
+    max_com_drift: 1.0
+
+    # Maximum allowed Rg std/mean ratio
+    max_rg_std_ratio: 0.15
+
+    # Maximum allowed frame-to-frame RMSD jump (nm)
+    max_frame_jump_rmsd: 0.5
+
+  # RMSD quality grading criteria
+  rmsd_grading:
+    # Grade A (Excellent)
+    grade_a:
+      max_mean_rmsd: 0.3    # nm
+      max_std_rmsd: 0.05    # nm
+      max_convergence_fraction: 0.2
+
+    # Grade B (Good)
+    grade_b:
+      max_mean_rmsd: 0.5    # nm
+      max_std_rmsd: 0.1     # nm
+      max_convergence_fraction: 0.3
+
+    # Grade C (Acceptable)
+    grade_c:
+      max_mean_rmsd: 0.8    # nm
+      max_std_rmsd: 0.15    # nm
+      max_convergence_fraction: 0.5
+
+    # Grade D: Anything worse than Grade C
+
+# Batch processing settings
+batch:
+  # Maximum number of parallel workers
+  max_workers: 4
+
+  # Retry failed tasks
+  retry_failed: true
+
+  # Stop on first failure (default: false, continue with other tasks)
+  fail_fast: false
+
+  # Validation stride for faster checks (use >1 for large trajectories)
+  validation_stride: 1
+
+# Output settings
+output:
+  # Generate quality reports (markdown + JSON)
+  generate_reports: true
+
+  # Keep temporary PBC processing files
+  keep_temp_files: false
+
+  # Log level: "DEBUG", "INFO", "WARNING", "ERROR"
+  log_level: "INFO"
+
+# Advanced settings
+advanced:
+  # RMSD convergence analysis
+  rmsd_convergence:
+    # Number of blocks for block analysis
+    n_blocks: 5
+
+    # Moving average window size
+    moving_avg_window: 100
+
+    # Convergence threshold (nm)
+    convergence_threshold: 0.05
