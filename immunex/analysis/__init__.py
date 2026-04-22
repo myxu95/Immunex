@@ -3,18 +3,15 @@ from . import quality
 from . import interactions
 from . import interface
 from . import conformation
+from . import comparison
 
 # Import individual modules for convenience
 from .trajectory import (
     PBCProcessor,
-    pHLATCRAnalyzer,
-    pHLATCRHydrogenBondAnalyzer,
-    ComplexAngleAnalyzer,
     RMSDCalculator,
-    RDFCalculator,
-    RadiusGyrationCalculator,
-    DistanceCalculator,
-    HydrogenBondAnalyzer,
+    RMSDInput,
+    RMSDResult,
+    RMSDConvergenceAnalyzer,
     RMSFAnalyzer,
     ResidueRMSFAnalyzer,
     ResidueRMSFResult,
@@ -64,6 +61,16 @@ from .conformation import (
     InterfaceClusteringResult,
     write_cluster_id_vs_time,
     write_cluster_population_over_time,
+)
+from .comparison import (
+    ComparisonArtifacts,
+    SingleCaseArtifacts,
+    SingleCaseLoader,
+    ComparisonBuildResult,
+    SystemComparisonBuilder,
+    write_quality_interface_comparison_plot,
+    write_flexibility_comparison_plot,
+    write_interaction_family_comparison_plot,
 )
 
 # Import free energy analysis
@@ -125,6 +132,11 @@ from .interactions import (
     HydrophobicContactPairAnalyzer,
     PiStackingPairAnalyzer,
     CationPiPairAnalyzer,
+    RRCSAnalyzer,
+    RRCSPairSpec,
+    build_residue_heavy_atom_indices,
+    parse_rrcs_pair_file,
+    residue_chain_id,
 )
 from .interface import (
     BuriedSurfaceAreaAnalyzer,
@@ -139,16 +151,16 @@ __all__ = [
     "interactions",
     "interface",
     "conformation",
+    "comparison",
     "allostery",
     "free_energy",
     "topology",
     # Trajectory analysis modules (lazy loaded)
     "RMSDCalculator",
+    "RMSDInput",
+    "RMSDResult",
+    "RMSDConvergenceAnalyzer",
     "PBCProcessor",
-    "RDFCalculator",
-    "RadiusGyrationCalculator",
-    "DistanceCalculator",
-    "HydrogenBondAnalyzer",
     "RMSFAnalyzer",
     "ResidueRMSFAnalyzer",
     "ResidueRMSFResult",
@@ -160,9 +172,6 @@ __all__ = [
     "write_tcr_rmsf_profile",
     "write_phla_rmsf_profile",
     "write_region_rmsf_summary",
-    "pHLATCRAnalyzer",
-    "pHLATCRHydrogenBondAnalyzer",
-    "ComplexAngleAnalyzer",
     # Structure analysis modules
     "BFactorAnalyzer",
     "ContactMapCalculator",
@@ -191,6 +200,14 @@ __all__ = [
     "InterfaceClusteringResult",
     "write_cluster_id_vs_time",
     "write_cluster_population_over_time",
+    "ComparisonArtifacts",
+    "SingleCaseArtifacts",
+    "SingleCaseLoader",
+    "ComparisonBuildResult",
+    "SystemComparisonBuilder",
+    "write_quality_interface_comparison_plot",
+    "write_flexibility_comparison_plot",
+    "write_interaction_family_comparison_plot",
     # Free energy analysis modules
     "FELCalculator",
     "FELVisualizer",
@@ -245,6 +262,11 @@ __all__ = [
     "HydrophobicContactPairAnalyzer",
     "PiStackingPairAnalyzer",
     "CationPiPairAnalyzer",
+    "RRCSAnalyzer",
+    "RRCSPairSpec",
+    "build_residue_heavy_atom_indices",
+    "parse_rrcs_pair_file",
+    "residue_chain_id",
     "BuriedSurfaceAreaAnalyzer",
     "BuriedSurfaceAreaResult",
 ]
@@ -254,8 +276,24 @@ def __getattr__(name):
     if name == "trajectory":
         from . import trajectory
         return trajectory
-    elif name in ["RMSDCalculator", "RDFCalculator", "RadiusGyrationCalculator",
-                   "DistanceCalculator", "HydrogenBondAnalyzer"]:
+    elif name in [
+        "RMSDCalculator",
+        "RMSDInput",
+        "RMSDResult",
+        "RMSDConvergenceAnalyzer",
+        "PBCProcessor",
+        "RMSFAnalyzer",
+        "ResidueRMSFAnalyzer",
+        "ResidueRMSFResult",
+        "ResidueContactFrequencyAnalyzer",
+        "extract_sequence_from_topology",
+        "find_subsequence_position",
+        "calculate_cdr3_rmsf",
+        "analyze_phla_tcr_rmsf",
+        "write_tcr_rmsf_profile",
+        "write_phla_rmsf_profile",
+        "write_region_rmsf_summary",
+    ]:
         from . import trajectory
         return getattr(trajectory, name)
     elif name == "structure":

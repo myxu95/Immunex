@@ -2,8 +2,8 @@
 
 `immunex/utils` is a shrinking compatibility and helper layer.
 
-Legacy product interfaces that are no longer part of the default public API
-have been moved to `immunex/legacy/`.
+Retired product interfaces should be removed from the active package tree
+instead of being kept as a parallel product surface.
 
 ## Allowed Contents
 
@@ -15,6 +15,11 @@ have been moved to `immunex/legacy/`.
 ## Modules That Need Extra Care
 
 Several current files in this package are domain-heavy and should eventually be reviewed for migration into clearer owners, especially chain identification and topology interpretation code.
+
+## Ownership Clarifications
+
+- SLURM batch script generation is owned by `immunex/cluster/slurm_generator.py`
+- CDR semantic detection is owned by the ANARCI-based topology analysis path, not by `utils/`
 
 ## Rule For New Code
 

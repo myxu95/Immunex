@@ -1,0 +1,26 @@
+{
+  "case_dir": "/home/xumy/work/development/Immunex/output/1OGA_demo_bundle/report/interaction_case_1OGA",
+  "n_sources": 20,
+  "sources": [
+    "cationpi/1OGA_sd_run2/analysis/interactions/cation_pi_interactions/cation_pi_annotation_summary.json",
+    "cationpi/1OGA_sd_run2/analysis/interactions/cation_pi_interactions/residue_pair_cation_pi_summary.json",
+    "contact/1OGA_sd_run2/analysis/contacts/contact_annotation_summary.json",
+    "contact/1OGA_sd_run2/analysis/contacts/residue_contact_summary.json",
+    "hbond/1OGA_sd_run2/analysis/interactions/hydrogen_bonds/hbond_annotation_summary.json",
+    "hbond/1OGA_sd_run2/analysis/interactions/hydrogen_bonds/residue_pair_hbonds_summary.json",
+    "hydrophobic/1OGA_sd_run2/analysis/interactions/hydrophobic_contacts/hydrophobic_annotation_summary.json",
+    "hydrophobic/1OGA_sd_run2/analysis/interactions/hydrophobic_contacts/residue_pair_hydrophobic_contacts_summary.json",
+    "overview/bsa/interface_summary.json",
+    "overview/cluster/cluster_feature_digest.csv",
+    "overview/cluster/interface_clustering_summary.json",
+    "overview/cluster/summary_table.csv",
+    "overview/interaction_overview.json",
+    "overview/rmsf/rmsf_summary.json",
+    "overview/rrcs/rrcs_region_summary.csv",
+    "overview/rrcs/rrcs_summary.json",
+    "pipi/1OGA_sd_run2/analysis/interactions/pi_interactions/pi_pi_annotation_summary.json",
+    "pipi/1OGA_sd_run2/analysis/interactions/pi_interactions/residue_pair_pi_pi_summary.json",
+    "saltbridge/1OGA_sd_run2/analysis/interactions/salt_bridges/residue_pair_salt_bridges_summary.json",
+    "saltbridge/1OGA_sd_run2/analysis/interactions/salt_bridges/salt_bridge_annotation_summary.json"
+  ]
+}

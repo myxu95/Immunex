@@ -7,7 +7,7 @@ This directory only keeps examples that still match the current Immunex product 
 - `quality_analysis_usage.py`: trajectory quality assessment
 - `docking_angles_usage.py`: docking-angle analysis
 - `contact_correlation_example.py`: contact-correlation analysis
-- `rmsd_unified_example.py`: RMSD usage under the current package layout
+- `rmsd_with_index_manager.py`: RMSD usage under the current package layout
 - `task_discovery_example.py`: task discovery and context generation
 
 ## Other Active Examples

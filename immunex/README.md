@@ -10,7 +10,6 @@ This package is the product core of the repository.
 - `cli/`: user-facing command entrypoints
 - `cluster/`: HPC and remote-execution adapters
 - `utils/`: compatibility helpers and generic support utilities only
-- `legacy/`: retired interfaces kept only for explicit compatibility work
 
 ## Boundary Rule
 
@@ -28,4 +27,5 @@ Preferred dependency direction is:
 
 `utils/` should not grow into a second domain layer.
 
-`legacy/` should never be treated as the default product surface.
+Historical implementations should stay outside the active product surface and
+must not be reintroduced into `immunex/`.

@@ -30,7 +30,9 @@ from .nodes import (
     BiologicalIdentityNode,
     BSAAnalysisNode,
     NormalModeNode,
+    RRCSNode,
     InterfaceClusteringNode,
+    SystemComparisonNode,
     ContactFrequencyNode,
     ContactAnnotationNode,
     ContactHeatmapNode,
@@ -501,6 +503,36 @@ class BSAPipeline(Pipeline):
         super().__init__(nodes=nodes)
 
 
+class RRCSPipeline(Pipeline):
+    """关键界面 RRCS 分析 pipeline。"""
+
+    def __init__(
+        self,
+        radius_min: float = 3.23,
+        radius_max: float = 4.63,
+        stride: int = 1,
+        pair_scope: str = "interface",
+        pair_file: str | None = None,
+        auto_identify_chains: bool = True,
+        auto_detect_cdr: bool = True,
+    ):
+        nodes = []
+        if auto_identify_chains:
+            nodes.append(ChainIdentificationNode(method="anarci", fallback_to_heuristic=True))
+        if auto_detect_cdr:
+            nodes.append(CDRDetectionNode())
+        nodes.append(
+            RRCSNode(
+                radius_min=radius_min,
+                radius_max=radius_max,
+                stride=stride,
+                pair_scope=pair_scope,
+                pair_file=pair_file,
+            )
+        )
+        super().__init__(nodes=nodes)
+
+
 class BiologicalIdentityPipeline(Pipeline):
     """单体系基础生物学身份注释 pipeline。"""
 
@@ -576,6 +608,31 @@ class InterfaceClusteringPipeline(Pipeline):
                 interaction_weight=interaction_weight,
             )
         )
+        super().__init__(nodes=nodes)
+
+
+class SystemComparisonPipeline(Pipeline):
+    """双体系结果对比 pipeline。"""
+
+    def __init__(
+        self,
+        case_a_root: str,
+        case_b_root: str,
+        label_a: str = "Case A",
+        label_b: str = "Case B",
+        comparison_mode: str = "generic",
+        comparison_context: str = "",
+    ):
+        nodes = [
+            SystemComparisonNode(
+                case_a_root=case_a_root,
+                case_b_root=case_b_root,
+                label_a=label_a,
+                label_b=label_b,
+                comparison_mode=comparison_mode,
+                comparison_context=comparison_context,
+            )
+        ]
         super().__init__(nodes=nodes)
 
 

@@ -19,10 +19,12 @@ SUBCOMMANDS = {
     'rmsd': 'RMSD calculation and analysis',
     'rmsf': 'RMSF calculation and analysis',
     'contact': 'Contact analysis',
+    'rrcs': 'Residue-residue contact score analysis',
     'identity': 'Biological identity annotation',
     'bsa': 'Buried surface area analysis',
     'nma': 'Normal mode / ENM analysis',
     'inter_cluster': 'Interface-aware state clustering',
+    'compare': 'Compare analyzed systems',
     'angle': 'Docking angle analysis',
     'pdb': 'PDB file processing',
     'batch': 'Batch processing workflows',
@@ -44,10 +46,12 @@ Available subcommands:
     rmsd          RMSD calculation and analysis
     rmsf          RMSF calculation and analysis
     contact       Contact analysis
+    rrcs          Residue-residue contact score analysis
     identity      Biological identity annotation
     bsa           Buried surface area analysis
     nma           Normal mode / ENM analysis
     inter_cluster Interface-aware state clustering
+    compare       Compare analyzed systems
     angle         Docking angle analysis
     pdb           PDB file processing
     batch         Batch processing workflows
@@ -57,11 +61,14 @@ Examples:
     imn preprocess -f md.xtc -t md.tpr -o processed.xtc
     imn quality -f processed.xtc -t md.tpr
     imn rmsd -f processed.xtc -t md.tpr -s backbone
+    imn rrcs --structure md_processed_converted.pdb --topology md.tpr --trajectory md_processed.xtc -o ./output/rrcs_demo
     imn identity --structure md_processed_converted.pdb -o ./output/identity_demo
     imn bsa -f md_processed.xtc -s md.tpr --structure md_processed_converted.pdb -o ./bsa
     imn nma --structure md_processed_converted.pdb -o ./output/nma_demo
     imn inter_cluster -f md_processed.xtc -s md.tpr --structure md_processed_converted.pdb -o ./output/interface_cluster
+    imn compare systems --case-a output/case_A --case-b output/case_B -o output/compare_ab
     imn report interaction --base-dir output/interaction_case_1OGA --system-id 1OGA_sd_run2
+    imn report serve --overview-dir output/1OGA_demo_bundle/report/interaction_case_1OGA/overview
     imn pdb download 1ao7 2ckb
     imn batch preprocess /data/md/ --workers 4
 

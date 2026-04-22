@@ -24,12 +24,14 @@ QUALITY_DIR_NAME = "quality"
 BSA_DIR_NAME = "bsa"
 RMSF_DIR_NAME = "rmsf"
 IDENTITY_DIR_NAME = "identity"
+RRCS_DIR_NAME = "rrcs"
 CLUSTER_DIR_NAME = "cluster"
 ALL_REPORT_SECTIONS = (
     "overview",
     "quality",
     "interface",
     "flexibility",
+    "rrcs",
     "cluster",
     "occupancy",
     "contact",
@@ -59,8 +61,16 @@ HEATMAP_CMAP = LinearSegmentedColormap.from_list(
 )
 
 
-def build_report_paths(base_dir: Path, system_id: str) -> dict[str, Path]:
-    return {
+def build_report_paths(base_dir: Path, overview_dir: Path, system_id: str) -> dict[str, Path]:
+    overview_reports = {
+        "contact": overview_dir / "reports/contact_report.csv",
+        "hbond": overview_dir / "reports/hbond_report.csv",
+        "saltbridge": overview_dir / "reports/saltbridge_report.csv",
+        "hydrophobic": overview_dir / "reports/hydrophobic_report.csv",
+        "pipi": overview_dir / "reports/pipi_report.csv",
+        "cationpi": overview_dir / "reports/cationpi_report.csv",
+    }
+    base_reports = {
         "contact": base_dir / "contact" / system_id / "analysis/contacts/contact_report.csv",
         "hbond": base_dir / "hbond" / system_id / "analysis/interactions/hydrogen_bonds/hbond_report.csv",
         "saltbridge": base_dir / "saltbridge" / system_id / "analysis/interactions/salt_bridges/salt_bridge_report.csv",
@@ -68,6 +78,10 @@ def build_report_paths(base_dir: Path, system_id: str) -> dict[str, Path]:
         "pipi": base_dir / "pipi" / system_id / "analysis/interactions/pi_interactions/pi_pi_report.csv",
         "cationpi": base_dir / "cationpi" / system_id / "analysis/interactions/cation_pi_interactions/cation_pi_report.csv",
     }
+    resolved: dict[str, Path] = {}
+    for family, overview_path in overview_reports.items():
+        resolved[family] = overview_path if overview_path.exists() else base_reports[family]
+    return resolved
 
 
 def ensure_symlink(dst: Path, src: Path) -> None:
@@ -187,12 +201,39 @@ def choose_cluster_root(cli_value: Path | None, system_id: str) -> Path | None:
     return None
 
 
+def choose_rrcs_root(cli_value: Path | None, source_pdb: Path, system_id: str) -> Path | None:
+    candidates: list[Path] = []
+    if cli_value is not None:
+        candidates.append(cli_value)
+    candidates.extend(
+        [
+            source_pdb.parent,
+            Path(f"/home/xumy/work/development/Immunex/output/rrcs_demo_{system_id}"),
+            Path(f"/home/xumy/work/development/Immunex/output/rrcs_demo_{system_id.split('_')[0]}"),
+            Path(
+                f"/home/xumy/work/development/Immunex/output/rrcs_batch/{source_pdb.parent.parent.name}/{system_id}"
+            ),
+        ]
+    )
+    for candidate in candidates:
+        if not candidate:
+            continue
+        analysis_dir = candidate / "analysis/interactions/rrcs"
+        if (
+            (analysis_dir / "rrcs_summary.json").exists()
+            and (analysis_dir / "rrcs_pair_summary.csv").exists()
+            and (analysis_dir / "rrcs_region_summary.csv").exists()
+        ):
+            return candidate
+    return None
+
+
 def load_overview_rows(csv_path: Path) -> list[dict[str, str]]:
     with csv_path.open("r", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
 
 
-def build_cards(rows: list[dict[str, str]]) -> str:
+def build_cards(rows: list[dict[str, str]], overview_dir: Path) -> str:
     cards = []
     for row in rows:
         family = html.escape(row["family"])
@@ -202,6 +243,11 @@ def build_cards(rows: list[dict[str, str]]) -> str:
         report_href = html.escape(row["overview_report"])
         heatmap_count = html.escape(row["heatmap_count"])
         status = "empty" if row["pair_rows"] == "0" else "active"
+        report_link_html = (
+            f'<a href="{report_href}">Open report CSV</a>'
+            if (overview_dir / row["overview_report"]).exists()
+            else '<span class="disabled-link">Report CSV unavailable</span>'
+        )
         cards.append(
             f"""
             <article class="family-card {status}">
@@ -218,7 +264,7 @@ def build_cards(rows: list[dict[str, str]]) -> str:
                 <div><span>Heatmaps</span><strong>{heatmap_count}</strong></div>
               </div>
               <div class="family-links">
-                <a href="{report_href}">Open report CSV</a>
+                {report_link_html}
               </div>
             </article>
             """
@@ -334,6 +380,7 @@ def normalize_visible_sections(
     quality_payload: dict[str, object] | None,
     bsa_payload: dict[str, object] | None,
     rmsf_payload: dict[str, object] | None,
+    rrcs_payload: dict[str, object] | None,
     cluster_payload: dict[str, object] | None,
     occupancy_payload: list[dict[str, object]],
 ) -> set[str]:
@@ -349,6 +396,8 @@ def normalize_visible_sections(
         visible.discard("interface")
     if not rmsf_payload:
         visible.discard("flexibility")
+    if not rrcs_payload:
+        visible.discard("rrcs")
     if not cluster_payload:
         visible.discard("cluster")
     if not occupancy_payload:
@@ -461,33 +510,40 @@ def build_hero_metric_strip(
     return "\n".join(chips)
 
 
-def build_table(rows: list[dict[str, str]]) -> str:
+def build_table(rows: list[dict[str, str]], overview_dir: Path) -> str:
     lines = [
         "<table>",
         "<thead><tr><th>family</th><th>type</th><th>raw pairs</th><th>report rows</th><th>report</th></tr></thead>",
         "<tbody>",
     ]
     for row in rows:
+        report_cell = (
+            f'<a href="{html.escape(row["overview_report"])}">Open</a>'
+            if (overview_dir / row["overview_report"]).exists()
+            else '<span class="disabled-link">Unavailable</span>'
+        )
         lines.append(
             "<tr>"
             f"<td>{html.escape(row['family'])}</td>"
             f"<td>{html.escape(row['label'])}</td>"
             f"<td>{html.escape(row['pair_rows'])}</td>"
             f"<td>{html.escape(row['report_rows'])}</td>"
-            f"<td><a href=\"{html.escape(row['overview_report'])}\">Open</a></td>"
+            f"<td>{report_cell}</td>"
             "</tr>"
         )
     lines.append("</tbody></table>")
     return "\n".join(lines)
 
 
-def build_heatmap_sections(rows: list[dict[str, str]]) -> str:
+def build_heatmap_sections(rows: list[dict[str, str]], overview_dir: Path) -> str:
     sections = []
     for row in rows:
         if not row["heatmaps"]:
             continue
         images = []
         for item in row["heatmaps"].split("; "):
+            if not (overview_dir / item).exists():
+                continue
             label = Path(item).name.replace(".png", "")
             images.append(
                 f"""
@@ -497,6 +553,8 @@ def build_heatmap_sections(rows: list[dict[str, str]]) -> str:
                 </figure>
                 """
             )
+        if not images:
+            continue
         sections.append(
             f"""
             <section class="heatmap-section">
@@ -622,6 +680,7 @@ def build_nav(visible_sections: set[str]) -> str:
         ("quality", "Quality"),
         ("interface", "Interface"),
         ("flexibility", "Flexibility"),
+        ("rrcs", "RRCS"),
         ("cluster", "Cluster"),
         ("occupancy", "Persistence"),
         ("contact", "Landscape"),
@@ -863,6 +922,305 @@ def build_rmsf_section(rmsf_payload: dict[str, object] | None) -> str:
     """
 
 
+def build_rrcs_assets(
+    overview_dir: Path,
+    figures_dir: Path,
+    rrcs_root: Path | None,
+) -> dict[str, object] | None:
+    if rrcs_root is None:
+        return None
+
+    analysis_dir = rrcs_root / "analysis/interactions/rrcs"
+    summary_json = analysis_dir / "rrcs_summary.json"
+    pair_csv = analysis_dir / "rrcs_pair_summary.csv"
+    annotated_csv = analysis_dir / "annotated_rrcs_pair_summary.csv"
+    region_csv = analysis_dir / "rrcs_region_summary.csv"
+    timeseries_csv = analysis_dir / "rrcs_timeseries.csv"
+    if not (summary_json.exists() and pair_csv.exists() and region_csv.exists()):
+        return None
+
+    rrcs_dir = overview_dir / RRCS_DIR_NAME
+    rrcs_dir.mkdir(exist_ok=True)
+
+    summary_link = rrcs_dir / "rrcs_summary.json"
+    pair_link = rrcs_dir / "rrcs_pair_summary.csv"
+    region_link = rrcs_dir / "rrcs_region_summary.csv"
+    ensure_symlink(summary_link, summary_json)
+    ensure_symlink(pair_link, pair_csv)
+    ensure_symlink(region_link, region_csv)
+
+    annotated_href = ""
+    pair_source = annotated_csv if annotated_csv.exists() else pair_csv
+    if annotated_csv.exists():
+        annotated_link = rrcs_dir / "annotated_rrcs_pair_summary.csv"
+        ensure_symlink(annotated_link, annotated_csv)
+        annotated_href = annotated_link.relative_to(overview_dir).as_posix()
+
+    timeseries_href = ""
+    if timeseries_csv.exists():
+        timeseries_link = rrcs_dir / "rrcs_timeseries.csv"
+        ensure_symlink(timeseries_link, timeseries_csv)
+        timeseries_href = timeseries_link.relative_to(overview_dir).as_posix()
+
+    summary = json.loads(summary_json.read_text(encoding="utf-8"))
+    pair_df = pd.read_csv(pair_source)
+    region_df = pd.read_csv(region_csv)
+
+    def _partner_block(row: pd.Series) -> str:
+        mhc_subregion = str(row.get("mhc_subregion", "") or "")
+        partner_component = str(row.get("partner_component", "") or "")
+        if mhc_subregion == "alpha1_helix":
+            return "α1"
+        if mhc_subregion == "alpha2_helix":
+            return "α2"
+        if partner_component == "peptide" or mhc_subregion == "peptide":
+            return "peptide"
+        if partner_component == "HLA_alpha":
+            return "HLA"
+        return partner_component or "-"
+
+    def _chain_label(value: str) -> str:
+        value_norm = str(value or "").lower()
+        if value_norm == "alpha":
+            return "TCRα"
+        if value_norm == "beta":
+            return "TCRβ"
+        return str(value or "TCR")
+
+    if not pair_df.empty:
+        if "tcr_residue_label" in pair_df.columns and "partner_residue_label" in pair_df.columns:
+            pair_df["pair_display"] = pair_df.apply(
+                lambda row: f"{_chain_label(row.get('tcr_chain', ''))} {row.get('tcr_residue_label', '-')}"
+                f" ↔ {_partner_block(row)} {row.get('partner_residue_label', '-')}",
+                axis=1,
+            )
+        else:
+            pair_df["pair_display"] = (
+                pair_df["residue_label_1"].astype(str) + " ↔ " + pair_df["residue_label_2"].astype(str)
+            )
+
+    if not region_df.empty:
+        region_df["region_display"] = region_df.apply(
+            lambda row: f"{_chain_label(row.get('tcr_chain', ''))} {row.get('tcr_region', '-')}"
+            f" ↔ {_partner_block(row)}",
+            axis=1,
+        )
+
+    interaction_plot = figures_dir / "rrcs_active_regions.png"
+    top_pairs_plot = figures_dir / "rrcs_top_pairs.png"
+
+    region_plot_df = (
+        region_df[region_df["mean_rrcs_sum"] > 0]
+        .sort_values("mean_rrcs_sum", ascending=False)
+        .head(8)
+        .copy()
+    )
+    if not region_plot_df.empty:
+        plot_df = region_plot_df.iloc[::-1]
+        fig, ax = plt.subplots(figsize=(8.6, max(4.2, 0.55 * len(plot_df) + 1.8)))
+        bars = ax.barh(
+            plot_df["region_display"],
+            plot_df["mean_rrcs_sum"],
+            color="#2d6f5c",
+            edgecolor="#245447",
+            linewidth=0.8,
+        )
+        for bar, _, row in zip(bars, plot_df["mean_rrcs_sum"], plot_df.itertuples()):
+            ax.text(
+                bar.get_width() + 0.08,
+                bar.get_y() + bar.get_height() / 2.0,
+                f"{bar.get_width():.2f}",
+                va="center",
+                ha="left",
+                fontsize=8.5,
+                color="#31574d",
+            )
+        ax.set_title("Top active RRCS interface regions")
+        ax.set_xlabel("Summed mean RRCS")
+        ax.grid(axis="x", alpha=0.18, linestyle="--")
+        ax.set_axisbelow(True)
+        fig.tight_layout()
+        fig.savefig(interaction_plot, dpi=220, facecolor="white")
+        plt.close(fig)
+
+    top_pair_df = (
+        pair_df[pair_df["mean_rrcs"] > 0]
+        .sort_values("mean_rrcs_sum", ascending=False)
+        if "mean_rrcs_sum" in pair_df.columns else pair_df[pair_df["mean_rrcs"] > 0].sort_values("mean_rrcs", ascending=False)
+    )
+    top_pair_df = top_pair_df.sort_values("mean_rrcs", ascending=False).head(10).copy()
+    if not top_pair_df.empty:
+        fig, ax = plt.subplots(figsize=(9.2, max(5.2, 0.52 * len(top_pair_df) + 1.8)))
+        plot_df = top_pair_df.iloc[::-1]
+        bars = ax.barh(plot_df["pair_display"], plot_df["mean_rrcs"], color="#3f8a77", edgecolor="#245447", linewidth=0.8)
+        for bar, row in zip(bars, plot_df.itertuples()):
+            ax.text(
+                bar.get_width() + 0.06,
+                bar.get_y() + bar.get_height() / 2.0,
+                f"{float(getattr(row, 'rrcs_nonzero_fraction', 0.0)) * 100:.0f}% frames",
+                va="center",
+                ha="left",
+                fontsize=8.2,
+                color="#31574d",
+            )
+        ax.set_title("Top RRCS hotspot pairs")
+        ax.set_xlabel("Mean RRCS")
+        ax.grid(axis="x", alpha=0.18, linestyle="--")
+        ax.set_axisbelow(True)
+        fig.tight_layout()
+        fig.savefig(top_pairs_plot, dpi=220, facecolor="white")
+        plt.close(fig)
+
+    return {
+        "summary": summary,
+        "pair_df": pair_df,
+        "region_df": region_df,
+        "summary_href": summary_link.relative_to(overview_dir).as_posix(),
+        "pair_href": pair_link.relative_to(overview_dir).as_posix(),
+        "region_href": region_link.relative_to(overview_dir).as_posix(),
+        "annotated_href": annotated_href,
+        "timeseries_href": timeseries_href,
+        "interaction_plot_href": interaction_plot.relative_to(overview_dir).as_posix() if interaction_plot.exists() else "",
+        "top_pairs_plot_href": top_pairs_plot.relative_to(overview_dir).as_posix() if top_pairs_plot.exists() else "",
+    }
+
+
+def build_rrcs_section(rrcs_payload: dict[str, object] | None) -> str:
+    if not rrcs_payload:
+        return ""
+
+    summary = rrcs_payload["summary"]
+    pair_df = rrcs_payload["pair_df"]
+    region_df = rrcs_payload["region_df"]
+    top_pairs = summary.get("top_pairs", []) if isinstance(summary, dict) else []
+    top_pair_label = "-"
+    if top_pairs:
+        top_pair_entry = top_pairs[0]
+        residues = str(top_pair_entry.get("residues", "") or "").replace("↔", "↔")
+        pair_name = str(top_pair_entry.get("pair", "") or "")
+        top_pair_label = residues if residues else pair_name
+
+    metric_cards = [
+        ("Pair scope", str(summary.get("pair_scope", "interface"))),
+        ("Identified pairs", int(summary.get("n_nonzero_pairs", 0) or 0)),
+        ("Top hotspot", top_pair_label),
+        (
+            "Radius window",
+            f"{float(summary.get('radius_min_angstrom', 0.0)):.2f}-{float(summary.get('radius_max_angstrom', 0.0)):.2f} Å",
+        ),
+    ]
+    metric_html = "".join(
+        f"""
+        <div class="quality-card">
+          <span>{html.escape(str(label))}</span>
+          <strong>{html.escape(str(value))}</strong>
+        </div>
+        """
+        for label, value in metric_cards
+    )
+
+    top_pair_df = pair_df[pair_df["mean_rrcs"] > 0].sort_values("mean_rrcs", ascending=False).head(10).copy()
+    pair_rows: list[str] = []
+    for _, row in top_pair_df.iterrows():
+        pair_display = str(row.get("pair_display", "-"))
+        class_hint = str(row.get("interaction_class", "") or row.get("selection_scope", ""))
+        pair_rows.append(
+            "<tr>"
+            f"<td>{html.escape(pair_display)}</td>"
+            f"<td>{float(row.get('mean_rrcs', 0.0)):.2f}</td>"
+            f"<td>{float(row.get('max_rrcs', 0.0)):.2f}</td>"
+            f"<td>{float(row.get('rrcs_nonzero_fraction', 0.0)) * 100:.0f}%</td>"
+            f"<td>{html.escape(class_hint)}</td>"
+            "</tr>"
+        )
+    pair_table = (
+        '<div class="mini-table-wrap"><div class="mini-table-title">Top RRCS hotspot pairs</div>'
+        '<table class="mini-table"><thead><tr>'
+        '<th>pair</th><th>mean</th><th>max</th><th>observed</th><th>class</th>'
+        f"</tr></thead><tbody>{''.join(pair_rows)}</tbody></table></div>"
+        if pair_rows
+        else '<div class="mini-table-empty">No RRCS pair records.</div>'
+    )
+
+    region_head = region_df[region_df["mean_rrcs_sum"] > 0].sort_values("mean_rrcs_sum", ascending=False).head(10)
+    region_rows: list[str] = []
+    for _, row in region_head.iterrows():
+        region_rows.append(
+            "<tr>"
+            f"<td>{html.escape(str(row.get('region_display', '-')))}</td>"
+            f"<td>{float(row.get('mean_rrcs_sum', 0.0)):.2f}</td>"
+            "</tr>"
+        )
+    region_table = (
+        '<div class="mini-table-wrap"><div class="mini-table-title">Most active RRCS interface regions</div>'
+        '<table class="mini-table"><thead><tr>'
+        '<th>region</th><th>summed mean RRCS</th>'
+        f"</tr></thead><tbody>{''.join(region_rows)}</tbody></table></div>"
+        if region_rows
+        else '<div class="mini-table-empty">No RRCS region records.</div>'
+    )
+
+    downloads = [
+        f'<a href="{html.escape(str(rrcs_payload["summary_href"]))}">Open RRCS summary JSON</a>',
+        f'<a href="{html.escape(str(rrcs_payload["pair_href"]))}">Open RRCS pair summary CSV</a>',
+        f'<a href="{html.escape(str(rrcs_payload["region_href"]))}">Open RRCS region summary CSV</a>',
+    ]
+    if rrcs_payload.get("annotated_href"):
+        downloads.append(
+            f'<a href="{html.escape(str(rrcs_payload["annotated_href"]))}">Open annotated RRCS pair CSV</a>'
+        )
+    if rrcs_payload.get("timeseries_href"):
+        downloads.append(
+            f'<a href="{html.escape(str(rrcs_payload["timeseries_href"]))}">Open RRCS timeseries CSV</a>'
+        )
+
+    figures = []
+    if rrcs_payload.get("interaction_plot_href"):
+        figures.append(
+            f"""
+            <figure class="insight-card">
+              <img src="{html.escape(str(rrcs_payload['interaction_plot_href']))}" alt="RRCS by interaction class">
+              <figcaption>
+                <strong>Top active RRCS interface regions</strong>
+                <span>This view highlights where RRCS signal concentrates most strongly across the interface, for example CDR3β ↔ α2 helix or CDR3α ↔ peptide.</span>
+              </figcaption>
+            </figure>
+            """
+        )
+    if rrcs_payload.get("top_pairs_plot_href"):
+        figures.append(
+            f"""
+            <figure class="insight-card">
+              <img src="{html.escape(str(rrcs_payload['top_pairs_plot_href']))}" alt="Top RRCS residue pairs">
+              <figcaption>
+                <strong>Top RRCS hotspot pairs</strong>
+                <span>This plot shows the strongest hotspot residue pairs. The percentage on the right indicates in how many sampled frames each pair carries nonzero RRCS signal.</span>
+              </figcaption>
+            </figure>
+            """
+        )
+
+    return f"""
+    <section class="section" id="rrcs">
+      <h2>RRCS Contact Strength</h2>
+      <p class="note">This section focuses on residue pairs that actually exhibit RRCS signal, together with the most active interface regions and hotspot pairs. Higher RRCS indicates tighter atom-level packing between the two residues.</p>
+      <div class="quality-grid">
+        {metric_html}
+      </div>
+      <div class="insight-grid quality-figures">
+        {''.join(figures)}
+      </div>
+      <div class="stability-table-grid">
+        {pair_table}
+        {region_table}
+      </div>
+      <div class="quality-downloads">
+        {''.join(downloads)}
+      </div>
+    </section>
+    """
+
+
 def build_cluster_assets(
     overview_dir: Path,
     cluster_root: Path | None,
@@ -1082,39 +1440,46 @@ def _download_entry(href: str, title: str, subtitle: str) -> str:
 
 
 def build_downloads_section(
+    overview_dir: Path,
     identity_payload: dict[str, object] | None,
     bsa_payload: dict[str, object] | None,
     rmsf_payload: dict[str, object] | None,
+    rrcs_payload: dict[str, object] | None,
     cluster_payload: dict[str, object] | None,
 ) -> str:
+    def maybe_download_entry(href: str, title: str, subtitle: str) -> str | None:
+        if not (overview_dir / href).exists():
+            return None
+        return _download_entry(href, title, subtitle)
+
     groups: list[tuple[str, str, list[str]]] = [
         (
             "Overview",
             "Unified report-level index files and summary payloads.",
-            [
-                _download_entry(
+            list(filter(None, [
+                maybe_download_entry(
                     "interaction_overview.csv",
                     "interaction_overview.csv",
                     "Unified table across all interaction families",
                 ),
-                _download_entry(
+                maybe_download_entry(
                     "interaction_overview.json",
                     "interaction_overview.json",
                     "Machine-readable overview payload",
                 ),
-            ],
+            ])),
         ),
         (
             "Interaction Families",
             "Primary coarse-contact and typed-interaction reports.",
-            [
-                _download_entry("reports/contact_report.csv", "contact_report.csv", "Primary coarse-contact report"),
-                _download_entry("reports/hbond_report.csv", "hbond_report.csv", "Primary hydrogen-bond report"),
-                _download_entry("reports/saltbridge_report.csv", "saltbridge_report.csv", "Primary salt-bridge report"),
-                _download_entry("reports/hydrophobic_report.csv", "hydrophobic_report.csv", "Primary hydrophobic-contact report"),
-                _download_entry("reports/pipi_report.csv", "pipi_report.csv", "Primary pi-pi report"),
-                _download_entry("reports/cationpi_report.csv", "cationpi_report.csv", "Primary cation-pi report"),
-            ],
+            list(filter(None, [
+                maybe_download_entry("reports/contact_report.csv", "contact_report.csv", "Primary coarse-contact report"),
+                maybe_download_entry("reports/hbond_report.csv", "hbond_report.csv", "Primary hydrogen-bond report"),
+                maybe_download_entry("reports/saltbridge_report.csv", "saltbridge_report.csv", "Primary salt-bridge report"),
+                maybe_download_entry("reports/hydrophobic_report.csv", "hydrophobic_report.csv", "Primary hydrophobic-contact report"),
+                maybe_download_entry("reports/pipi_report.csv", "pipi_report.csv", "Primary pi-pi report"),
+                maybe_download_entry("reports/cationpi_report.csv", "cationpi_report.csv", "Primary cation-pi report"),
+            ])),
         ),
     ]
 
@@ -1175,6 +1540,39 @@ def build_downloads_section(
                 ],
             )
         )
+    if rrcs_payload:
+        entries = [
+            _download_entry(
+                str(rrcs_payload["summary_href"]),
+                "rrcs_summary.json",
+                "RRCS parameter summary, pair counts and top continuous-contact hotspots",
+            ),
+            _download_entry(
+                str(rrcs_payload["pair_href"]),
+                "rrcs_pair_summary.csv",
+                "Residue-pair RRCS summary with mean, max and nonzero fraction",
+            ),
+            _download_entry(
+                str(rrcs_payload["region_href"]),
+                "rrcs_region_summary.csv",
+                "Region-level RRCS aggregation across peptide and groove interface classes",
+            ),
+        ]
+        if rrcs_payload.get("annotated_href"):
+            entries.append(
+                _download_entry(
+                    str(rrcs_payload["annotated_href"]),
+                    "annotated_rrcs_pair_summary.csv",
+                    "RRCS pair summary enriched with TCR, peptide and groove semantic labels",
+                )
+            )
+        groups.append(
+            (
+                "RRCS",
+                "Continuous residue-residue contact strength outputs.",
+                entries,
+            )
+        )
     if cluster_payload:
         groups.append(
             (
@@ -1202,6 +1600,8 @@ def build_downloads_section(
 
     blocks = []
     for idx, (title, desc, entries) in enumerate(groups):
+        if not entries:
+            continue
         blocks.append(
             f"""
             <details class="download-group" {'open' if idx < 2 else ''}>
@@ -1962,13 +2362,18 @@ def build_analytical_figures(rows: list[dict[str, str]], figures_dir: Path) -> l
     frames = load_report_frames()
     outputs = [
         {
-            "title": "Top Contact Pairs",
-            "caption": "The highest-frequency residue pairs from the coarse contact layer. This is the fastest way to see what actually dominates the interface.",
-            "file": write_contact_top_pairs(frames["contact"], figures_dir),
+            "title": "Interaction Class Composition",
+            "caption": "A compact region-level view showing whether the landscape is dominated by peptide-facing, HLA-facing, or groove-facing contacts across families.",
+            "file": write_interaction_class_comparison(frames, figures_dir),
+        },
+        {
+            "title": "Family × TCR Region Map",
+            "caption": "A simplified landscape map that highlights which TCR regions contribute most strongly across the populated interaction families.",
+            "file": write_family_region_bubble(frames, figures_dir),
         },
         {
             "title": "Contact Hotspots",
-            "caption": "A compact hotspot view on both sides of the interface, much easier to read than a full matrix when presenting key residues.",
+            "caption": "A compact hotspot view on both sides of the interface, used here instead of a full residue matrix so the dominant residues remain readable.",
             "file": write_contact_hotspots(frames["contact"], figures_dir),
         },
     ]
@@ -2052,9 +2457,66 @@ def build_key_takeaways(
                 "</li>"
             )
     lines.append(
-        "<li>Start with the analytical figures for scale and hotspots, then move to heatmaps only for spatial detail.</li>"
+        "<li>Start with the primary figures for region-level scale and hotspots, then use the residue-pair digest table for the most concrete coarse-contact evidence.</li>"
     )
     return "\n".join(lines)
+
+
+def build_contact_metric_cards(rows: list[dict[str, str]], frames: dict[str, pd.DataFrame]) -> str:
+    total_pairs = sum(int(row["pair_rows"]) for row in rows)
+    active_families = sum(1 for row in rows if int(row["pair_rows"]) > 0)
+    contact_frame = frames.get("contact", pd.DataFrame())
+    peptide_fraction = 0.0
+    groove_fraction = 0.0
+    if not contact_frame.empty and "interaction_class" in contact_frame.columns:
+        counts = contact_frame["interaction_class"].astype(str).value_counts()
+        total = int(counts.sum())
+        if total > 0:
+            peptide_fraction = float(counts.get("peptide_tcr", 0) / total)
+            groove_fraction = float(counts.get("groove_tcr", 0) / total)
+    cards = [
+        ("Active families", f"{active_families}/{len(rows)}"),
+        ("Annotated pairs", str(total_pairs)),
+        ("Peptide-facing share", f"{peptide_fraction * 100:.0f}%"),
+        ("Groove-facing share", f"{groove_fraction * 100:.0f}%"),
+    ]
+    return "".join(
+        f"""
+        <div class="quality-card">
+          <span>{html.escape(label)}</span>
+          <strong>{html.escape(value)}</strong>
+        </div>
+        """
+        for label, value in cards
+    )
+
+
+def build_contact_digest_table(contact_frame: pd.DataFrame) -> str:
+    if contact_frame.empty:
+        return '<div class="mini-table-empty">No coarse-contact pairs available for digest view.</div>'
+    work = contact_frame.copy()
+    work["contact_frequency"] = pd.to_numeric(work["contact_frequency"], errors="coerce").fillna(0.0)
+    if "contact_frames" in work.columns:
+        work["contact_frames"] = pd.to_numeric(work["contact_frames"], errors="coerce").fillna(0).astype(int)
+    top = work.sort_values(["contact_frequency", "contact_frames"], ascending=[False, False]).head(8)
+    rows = []
+    for _, row in top.iterrows():
+        pair = f"{row.get('phla_residue', '-')} ↔ {row.get('tcr_residue', '-')}"
+        interface = str(row.get("interaction_class", "-")).replace("_", " ")
+        region = str(row.get("tcr_region_detailed", row.get("tcr_region", "-"))).replace("_", " ")
+        rows.append(
+            "<tr>"
+            f"<td>{html.escape(pair)}</td>"
+            f"<td>{html.escape(interface)}</td>"
+            f"<td>{html.escape(region)}</td>"
+            f"<td>{float(row.get('contact_frequency', 0.0)):.2f}</td>"
+            "</tr>"
+        )
+    return (
+        '<div class="mini-table-wrap"><div class="mini-table-title">Top coarse-contact pairs</div>'
+        '<table class="mini-table"><thead><tr><th>pair</th><th>interface</th><th>TCR region</th><th>freq.</th></tr></thead>'
+        f"<tbody>{''.join(rows)}</tbody></table></div>"
+    )
 
 
 def build_figure_gallery(figures: list[dict[str, str]]) -> str:
@@ -2074,7 +2536,7 @@ def build_figure_gallery(figures: list[dict[str, str]]) -> str:
     return "\n".join(cards)
 
 
-def build_family_pair_gallery(rows: list[dict[str, str]], figures_dir: Path) -> str:
+def build_family_pair_gallery(rows: list[dict[str, str]], figures_dir: Path, overview_dir: Path) -> str:
     frames = load_report_frames()
     cards = []
     for row in rows:
@@ -2082,9 +2544,26 @@ def build_family_pair_gallery(rows: list[dict[str, str]], figures_dir: Path) -> 
         frame = frames.get(family, pd.DataFrame())
         figure_name = write_family_top_pairs(family, frame, figures_dir)
         pair_table = build_pair_table_html(frame)
+        overview_report = row["overview_report"]
+        overview_report_path = overview_dir / overview_report
+        report_link = (
+            f'<a href="{html.escape(overview_report)}">Open CSV</a>'
+            if overview_report_path.exists()
+            else "<span>Report CSV unavailable</span>"
+        )
         heatmaps = [item for item in row["heatmaps"].split("; ") if item][:2]
-        thumbs = "".join(
-            f'<img src="{html.escape(item)}" alt="{html.escape(Path(item).name)}">' for item in heatmaps
+        valid_heatmaps = [item for item in heatmaps if (overview_dir / item).exists()]
+        thumbs = (
+            "".join(
+                f'<img src="{html.escape(item)}" alt="{html.escape(Path(item).name)}">' for item in valid_heatmaps
+            )
+            if valid_heatmaps
+            else ""
+        )
+        thumbs_block = (
+            f'<div class="family-detail-thumbs">{thumbs}</div>'
+            if thumbs
+            else ""
         )
         cards.append(
             f"""
@@ -2094,7 +2573,7 @@ def build_family_pair_gallery(rows: list[dict[str, str]], figures_dir: Path) -> 
                   <h3>{html.escape(family)}</h3>
                   <p>{html.escape(row['label'])}</p>
                 </div>
-                <a href="{html.escape(row['overview_report'])}">Open CSV</a>
+                {report_link}
               </div>
               <div class="family-detail-metrics">
                 <span><strong>{html.escape(str(row['pair_rows']))}</strong> raw pairs</span>
@@ -2103,7 +2582,7 @@ def build_family_pair_gallery(rows: list[dict[str, str]], figures_dir: Path) -> 
               </div>
               <img src="{html.escape(FIGURES_DIR_NAME + '/' + figure_name)}" alt="{html.escape(family + ' top pairs')}">
               {pair_table}
-              <div class="family-detail-thumbs">{thumbs}</div>
+              {thumbs_block}
             </article>
             """
         )
@@ -2112,9 +2591,9 @@ def build_family_pair_gallery(rows: list[dict[str, str]], figures_dir: Path) -> 
 
 def clean_stale_figure_files(figures_dir: Path) -> None:
     valid_names = {
-        "contact_top_pairs.png",
         "contact_hotspots.png",
-        "contact_top_pairs.png",
+        "interaction_class_composition.png",
+        "family_region_map.png",
         "hbond_top_pairs.png",
         "saltbridge_top_pairs.png",
         "hydrophobic_top_pairs.png",
@@ -2271,6 +2750,1049 @@ def build_viewer_metadata(cdr_json: Path, contact_csv: Path, dst_json: Path) -> 
     dst_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _safe_float(value: object) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def build_assistant_context(
+    system_id: str,
+    visible_sections: set[str],
+    rows: list[dict[str, str]],
+    report_frames: dict[str, pd.DataFrame],
+    quality_payload: dict[str, object] | None,
+    bsa_payload: dict[str, object] | None,
+    rmsf_payload: dict[str, object] | None,
+    rrcs_payload: dict[str, object] | None,
+    cluster_payload: dict[str, object] | None,
+    occupancy_payload: list[dict[str, object]],
+    identity_payload: dict[str, object] | None,
+) -> dict[str, Any]:
+    available_modules: list[str] = []
+    context: dict[str, Any] = {
+        "scope": "Single trajectory report",
+        "job_id": system_id,
+        "available_modules": available_modules,
+    }
+
+    if identity_payload:
+        available_modules.append("identity")
+        context["identity"] = {
+            "hla": str((identity_payload.get("hla_identity", {}) or {}).get("best_candidate_allele", "") or ""),
+            "peptide": str((identity_payload.get("peptide_identity", {}) or {}).get("sequence", "") or ""),
+            "tcr_alpha": str((identity_payload.get("tcr_identity", {}) or {}).get("alpha_v_gene", "") or ""),
+            "tcr_beta": str((identity_payload.get("tcr_identity", {}) or {}).get("beta_v_gene", "") or ""),
+        }
+
+    if quality_payload and "quality" in visible_sections:
+        available_modules.append("quality")
+        metrics = quality_payload.get("metrics", {}) or {}
+        full_var = _safe_float(metrics.get("full_variation_nm", 0.0))
+        tail_var = _safe_float(metrics.get("tail90_variation_nm", 0.0))
+        ratio = (tail_var / full_var) if full_var > 0 else 0.0
+        verdict = "stable" if ratio <= 0.45 else "caution" if ratio <= 0.70 else "broad_variation"
+        context["quality"] = {
+            "verdict": verdict,
+            "n_frames": int(metrics.get("n_frames", 0) or 0),
+            "tail90_variation_nm": tail_var,
+            "full_variation_nm": full_var,
+            "tail90_mean_rmsd_nm": _safe_float(metrics.get("tail90_mean_rmsd_nm", 0.0)),
+        }
+
+    if bsa_payload and "interface" in visible_sections:
+        available_modules.append("interface")
+        summary = bsa_payload.get("summary", {}) or {}
+        bsa_stats = summary.get("buried_surface_area", {}) or {}
+        ratio_stats = summary.get("interface_ratio", {}) or {}
+        context["interface"] = {
+            "mean_bsa": _safe_float(bsa_stats.get("mean", 0.0)),
+            "mean_interface_ratio": _safe_float(ratio_stats.get("mean", 0.0)),
+            "n_frames": int(summary.get("n_frames", 0) or 0),
+        }
+
+    contact_frame = report_frames.get("contact", pd.DataFrame())
+    if "contact" in visible_sections:
+        available_modules.append("contact")
+        total_pairs = sum(int(row.get("pair_rows", 0) or 0) for row in rows)
+        active_families = sum(1 for row in rows if int(row.get("pair_rows", 0) or 0) > 0)
+        peptide_share = 0.0
+        groove_share = 0.0
+        top_contact_pair = ""
+        if not contact_frame.empty and "interaction_class" in contact_frame.columns:
+            counts = contact_frame["interaction_class"].astype(str).value_counts()
+            total = int(counts.sum())
+            if total > 0:
+                peptide_share = float(counts.get("peptide_tcr", 0) / total)
+                groove_share = float(counts.get("groove_tcr", 0) / total)
+            top_contact = contact_frame.sort_values(["contact_frequency", "contact_frames"], ascending=[False, False]).head(1)
+            if not top_contact.empty:
+                row = top_contact.iloc[0]
+                top_contact_pair = f"{row.get('phla_residue', '-')} ↔ {row.get('tcr_residue', '-')}"
+        context["contact"] = {
+            "active_families": active_families,
+            "annotated_pairs": total_pairs,
+            "peptide_share": peptide_share,
+            "groove_share": groove_share,
+            "top_contact_pair": top_contact_pair,
+        }
+
+    if occupancy_payload and "occupancy" in visible_sections:
+        available_modules.append("persistence")
+        stable_pairs = sum(int((row.get("summary", {}) or {}).get("n_stable_pairs", 0) or 0) for row in occupancy_payload)
+        transient_pairs = sum(int((row.get("summary", {}) or {}).get("n_transient_pairs", 0) or 0) for row in occupancy_payload)
+        context["persistence"] = {
+            "families": [str(row.get("family", "")) for row in occupancy_payload],
+            "stable_pairs": stable_pairs,
+            "transient_pairs": transient_pairs,
+        }
+
+    if rmsf_payload and "flexibility" in visible_sections:
+        available_modules.append("rmsf")
+        summary = rmsf_payload.get("summary", {}) or {}
+        region_df = rmsf_payload.get("region_df", pd.DataFrame())
+        top_region = ""
+        top_region_value = 0.0
+        if isinstance(region_df, pd.DataFrame) and not region_df.empty and "mean_rmsf_angstrom" in region_df.columns:
+            ranked = region_df.sort_values("mean_rmsf_angstrom", ascending=False).head(1)
+            if not ranked.empty:
+                top_region = str(ranked.iloc[0].get("region_group", ""))
+                top_region_value = _safe_float(ranked.iloc[0].get("mean_rmsf_angstrom", 0.0))
+        context["rmsf"] = {
+            "mean_rmsf_angstrom": _safe_float(summary.get("mean_rmsf_angstrom", 0.0)),
+            "max_rmsf_angstrom": _safe_float(summary.get("max_rmsf_angstrom", 0.0)),
+            "top_region": top_region,
+            "top_region_mean_rmsf_angstrom": top_region_value,
+        }
+
+    if rrcs_payload and "rrcs" in visible_sections:
+        available_modules.append("rrcs")
+        summary = rrcs_payload.get("summary", {}) or {}
+        pair_df = rrcs_payload.get("pair_df", pd.DataFrame())
+        region_df = rrcs_payload.get("region_df", pd.DataFrame())
+        top_hotspot_pair = ""
+        if isinstance(pair_df, pd.DataFrame) and not pair_df.empty and "mean_rrcs" in pair_df.columns:
+            ranked_pairs = pair_df[pair_df["mean_rrcs"] > 0].sort_values("mean_rrcs", ascending=False).head(1)
+            if not ranked_pairs.empty:
+                top_hotspot_pair = str(ranked_pairs.iloc[0].get("pair_display", ""))
+        top_regions: list[str] = []
+        if isinstance(region_df, pd.DataFrame) and not region_df.empty and "mean_rrcs_sum" in region_df.columns:
+            ranked_regions = region_df[region_df["mean_rrcs_sum"] > 0].sort_values("mean_rrcs_sum", ascending=False).head(3)
+            top_regions = [str(item) for item in ranked_regions.get("region_display", pd.Series(dtype=str)).tolist()]
+        context["rrcs"] = {
+            "pair_scope": str(summary.get("pair_scope", "interface")),
+            "identified_pairs": int(summary.get("n_nonzero_pairs", 0) or 0),
+            "top_hotspot_pair": top_hotspot_pair,
+            "top_regions": top_regions,
+        }
+
+    if cluster_payload and "cluster" in visible_sections:
+        available_modules.append("cluster")
+        summary = cluster_payload.get("summary", {}) or {}
+        largest = summary.get("largest_cluster", {}) or {}
+        context["cluster"] = {
+            "n_clusters": int(summary.get("n_clusters", 0) or 0),
+            "dominant_cluster": int(largest.get("cluster_id", 0) or 0) if largest else 0,
+            "dominant_population_percent": _safe_float(largest.get("population_percent", 0.0)),
+        }
+
+    return context
+
+
+def build_assistant_css() -> str:
+    return """
+    .assistant-fab {
+      position: fixed;
+      right: 28px;
+      bottom: 28px;
+      z-index: 40;
+      border: 1px solid #b8c6c0;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #255b4b 0%, #1f4d40 100%);
+      color: #f7fbf9;
+      box-shadow: 0 12px 30px rgba(24, 43, 37, 0.24);
+      padding: 14px 18px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }
+    .assistant-fab:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 34px rgba(24, 43, 37, 0.28);
+      background: linear-gradient(180deg, #2a6654 0%, #225345 100%);
+    }
+    .assistant-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 21, 0.45);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 180ms ease, visibility 180ms ease;
+      z-index: 38;
+      cursor: pointer;
+    }
+    .assistant-overlay.is-open {
+      opacity: 1;
+      visibility: visible;
+    }
+    .assistant-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(600px, 50vw);
+      height: 100vh;
+      z-index: 39;
+      display: flex;
+      flex-direction: column;
+      background: #fbfcfb;
+      border-left: 1px solid #d7e0dc;
+      box-shadow: -18px 0 36px rgba(19, 28, 25, 0.12);
+      transform: translateX(100%);
+      transition: transform 220ms ease;
+    }
+    .assistant-drawer.is-open {
+      transform: translateX(0);
+    }
+    .assistant-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 18px 14px;
+      border-bottom: 1px solid #e0e7e3;
+      background: linear-gradient(180deg, #f8fbfa 0%, #f4f8f6 100%);
+    }
+    .assistant-header-copy strong {
+      display: block;
+      font-size: 18px;
+      color: #18312a;
+    }
+    .assistant-header-copy span {
+      display: block;
+      margin-top: 4px;
+      color: #62716b;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .assistant-close {
+      border: 1px solid #d2dbd7;
+      background: #ffffff;
+      color: #3a4b45;
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .assistant-body {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+      gap: 12px;
+      padding: 14px 16px 16px;
+      background: #f8faf9;
+      overflow-y: auto;
+    }
+    .assistant-context-card,
+    .assistant-quick-actions,
+    .assistant-evidence-panel {
+      border: 1px solid #dde5e1;
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: 0 8px 20px rgba(28, 42, 36, 0.05);
+      padding: 14px;
+      flex-shrink: 0;
+    }
+    .assistant-context-card {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .assistant-card-title {
+      margin: 0 0 10px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #27443c;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .assistant-context-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .assistant-context-item span {
+      display: block;
+      color: #6d7b76;
+      font-size: 12px;
+      margin-bottom: 3px;
+    }
+    .assistant-context-item strong {
+      display: block;
+      color: #1f2e29;
+      font-size: 13px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .assistant-tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .assistant-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: #eef4f1;
+      color: #29443c;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid #d6e3dd;
+    }
+    .assistant-quick-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .assistant-quick-action {
+      border: 1px solid #d7e1dc;
+      border-radius: 12px;
+      background: #fbfdfc;
+      color: #214238;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+    }
+    .assistant-quick-action:hover {
+      border-color: #a8c3b8;
+      background: #f2f8f5;
+      transform: translateY(-1px);
+    }
+    .assistant-chat-shell {
+      border: 1px solid #dde5e1;
+      border-radius: 18px;
+      background: #ffffff;
+      box-shadow: 0 8px 20px rgba(28, 42, 36, 0.05);
+      display: flex;
+      flex-direction: column;
+      min-height: 400px;
+      flex-grow: 1;
+      overflow: hidden;
+    }
+    .assistant-chat-messages {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: linear-gradient(180deg, #fafcfb 0%, #f6f9f7 100%);
+    }
+    .assistant-message {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 92%;
+      padding: 11px 12px;
+      border-radius: 14px;
+      border: 1px solid #dfe7e3;
+      background: #ffffff;
+      color: #21312c;
+      line-height: 1.55;
+      font-size: 13px;
+      box-shadow: 0 6px 14px rgba(29, 42, 37, 0.03);
+    }
+    .assistant-message.is-user {
+      align-self: flex-end;
+      background: #eaf3ef;
+      border-color: #caded5;
+    }
+    .assistant-message.is-assistant {
+      align-self: flex-start;
+    }
+    .assistant-message.is-error {
+      align-self: flex-start;
+      background: #fff5f4;
+      border-color: #f0d3ce;
+      color: #7a372c;
+    }
+    .assistant-message.is-loading {
+      align-self: flex-start;
+      background: #f3f7f5;
+      color: #5d6b66;
+    }
+    .assistant-message-role {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #6e7c77;
+    }
+    .assistant-message-body {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .assistant-message-meta {
+      font-size: 11px;
+      color: #70817a;
+    }
+    .assistant-composer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 12px 14px 14px;
+      border-top: 1px solid #e2e8e5;
+      background: #ffffff;
+    }
+    .assistant-input {
+      width: 100%;
+      min-height: 44px;
+      max-height: 120px;
+      resize: vertical;
+      border: 1px solid #d6e0dc;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font: inherit;
+      color: #21312c;
+      background: #fbfcfc;
+    }
+    .assistant-send {
+      align-self: end;
+      border: 1px solid #254b40;
+      border-radius: 12px;
+      padding: 10px 14px;
+      background: #255b4b;
+      color: #f7fbf9;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .assistant-send:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+    .assistant-evidence-highlights {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .assistant-evidence-highlight {
+      border: 1px solid #d7e3df;
+      border-radius: 12px;
+      background: #f7fbfa;
+      padding: 10px 12px;
+    }
+    .assistant-evidence-highlight span {
+      display: block;
+      font-size: 11px;
+      color: #70817a;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .assistant-evidence-highlight strong {
+      color: #17352f;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .assistant-evidence-section {
+      margin-top: 12px;
+    }
+    .assistant-evidence-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #17352f;
+      margin-bottom: 6px;
+    }
+    .assistant-evidence-list {
+      margin: 0;
+      padding-left: 18px;
+      color: #33453f;
+      font-size: 12.5px;
+      line-height: 1.6;
+    }
+    .assistant-evidence-list li + li {
+      margin-top: 4px;
+    }
+    .assistant-evidence-top-items {
+      display: grid;
+      gap: 8px;
+    }
+    .assistant-evidence-item {
+      border: 1px solid #d7e3df;
+      border-radius: 12px;
+      background: #fbfdfc;
+      padding: 10px 12px;
+    }
+    .assistant-evidence-item-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #17352f;
+      margin-bottom: 6px;
+    }
+    .assistant-evidence-item-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 8px;
+    }
+    .assistant-evidence-metric {
+      display: inline-flex;
+      gap: 4px;
+      font-size: 11.5px;
+      color: #445a54;
+      background: #eef4f2;
+      border-radius: 999px;
+      padding: 4px 8px;
+    }
+    .assistant-evidence-metric strong {
+      color: #17352f;
+    }
+    .assistant-evidence-empty {
+      color: #70817a;
+      font-size: 12.5px;
+      line-height: 1.6;
+    }
+    body.assistant-open {
+      overflow: hidden;
+    }
+    @media (max-width: 900px) {
+      .assistant-fab {
+        right: 16px;
+        bottom: 18px;
+      }
+      .assistant-drawer {
+        width: 90vw;
+      }
+      .assistant-quick-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    """
+
+
+def build_assistant_markup() -> str:
+    return """
+  <button type="button" id="assistant-fab" class="assistant-fab" data-component="FloatingAskButton">Immunex-Assistant</button>
+  <div id="assistant-overlay" class="assistant-overlay" data-component="AssistantOverlay" aria-hidden="true"></div>
+  <aside id="assistant-drawer" class="assistant-drawer" data-component="AssistantDrawer" aria-hidden="true" aria-label="Immunex Assistant">
+    <header class="assistant-header" data-component="AssistantHeader">
+      <div class="assistant-header-copy">
+        <strong>Immunex Assistant</strong>
+        <span>Single-job report assistant for lightweight scientific lookup and triage.</span>
+      </div>
+      <button type="button" id="assistant-close" class="assistant-close" aria-label="Close assistant">×</button>
+    </header>
+    <div class="assistant-body">
+      <section class="assistant-context-card" data-component="AssistantContextCard">
+        <div class="assistant-card-title">Current context</div>
+        <div id="assistant-context" class="assistant-context-grid"></div>
+        <div id="assistant-module-tags" class="assistant-tag-list"></div>
+      </section>
+      <section class="assistant-quick-actions" data-component="AssistantQuickActions">
+        <div class="assistant-card-title">Suggested questions</div>
+        <div id="assistant-quick-actions" class="assistant-quick-grid"></div>
+      </section>
+      <section class="assistant-chat-shell">
+        <div id="assistant-messages" class="assistant-chat-messages" data-component="AssistantChatMessages"></div>
+        <form id="assistant-composer" class="assistant-composer" data-component="AssistantComposer">
+          <textarea id="assistant-input" class="assistant-input" rows="3" placeholder="Ask about stability, interface, hotspots, or candidate sites..."></textarea>
+          <button type="submit" id="assistant-send" class="assistant-send">Send</button>
+        </form>
+      </section>
+      <section class="assistant-evidence-panel" data-component="AssistantEvidencePanel">
+        <div class="assistant-card-title">Evidence</div>
+        <div id="assistant-evidence" class="assistant-evidence-empty">Evidence will appear here after the first reply.</div>
+      </section>
+    </div>
+  </aside>
+    """
+
+
+def build_assistant_script(system_id: str, assistant_context: dict[str, Any]) -> str:
+    config = {
+        "mode": "live",
+        "scope": "single-job",
+        "skills": ["reporter-query"],
+        "endpoint": "/api/assistant/query",
+        "allow_mock_fallback": True,
+    }
+    template = """
+  window.IMMUNEX_JOB_ID = __JOB_ID_JSON__;
+  window.IMMUNEX_REPORT_CONTEXT = __REPORT_CONTEXT_JSON__;
+  window.IMMUNEX_ASSISTANT_CONFIG = __ASSISTANT_CONFIG_JSON__;
+
+  const IMMUNEX_ASSISTANT_QUICK_ACTIONS = [
+    { label: 'Diagnose stability', prompt: 'Diagnose stability' },
+    { label: 'Summarize interface', prompt: 'Summarize interface' },
+    { label: 'Identify hotspots', prompt: 'Identify hotspots' },
+    { label: 'Suggest mutation sites', prompt: 'Suggest mutation sites' }
+  ];
+
+  const ImmunexAssistant = (() => {
+    const state = {
+      open: false,
+      loading: false,
+      messages: [],
+      evidence: null,
+    };
+
+    const elements = {
+      fab: document.getElementById('assistant-fab'),
+      overlay: document.getElementById('assistant-overlay'),
+      drawer: document.getElementById('assistant-drawer'),
+      close: document.getElementById('assistant-close'),
+      context: document.getElementById('assistant-context'),
+      tags: document.getElementById('assistant-module-tags'),
+      quickActions: document.getElementById('assistant-quick-actions'),
+      messages: document.getElementById('assistant-messages'),
+      composer: document.getElementById('assistant-composer'),
+      input: document.getElementById('assistant-input'),
+      send: document.getElementById('assistant-send'),
+      evidence: document.getElementById('assistant-evidence')
+    };
+
+    function getContext() {
+      return window.IMMUNEX_REPORT_CONTEXT || {};
+    }
+
+    function formatNumber(value, digits = 2) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return 'n/a';
+      return numeric.toFixed(digits);
+    }
+
+    function formatPercent(value, digits = 0) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return 'n/a';
+      return `${(numeric * 100).toFixed(digits)}%`;
+    }
+
+    function labelizeModule(name) {
+      return String(name || '').replaceAll('_', ' ');
+    }
+
+    function setOpen(nextOpen) {
+      state.open = !!nextOpen;
+      elements.drawer.classList.toggle('is-open', state.open);
+      elements.overlay.classList.toggle('is-open', state.open);
+      elements.drawer.setAttribute('aria-hidden', String(!state.open));
+      document.body.classList.toggle('assistant-open', state.open);
+      if (state.open) {
+        elements.input.focus();
+      }
+    }
+
+    function renderContext() {
+      const context = getContext();
+      const moduleList = Array.isArray(context.available_modules) ? context.available_modules : [];
+      elements.context.innerHTML = `
+        <div class="assistant-context-item">
+          <span>Scope</span>
+          <strong>${context.scope || 'Single trajectory report'}</strong>
+        </div>
+        <div class="assistant-context-item">
+          <span>Job ID</span>
+          <strong>${window.IMMUNEX_JOB_ID || 'unknown'}</strong>
+        </div>
+      `;
+      if (!moduleList.length) {
+        elements.tags.innerHTML = '<span class="assistant-tag">No module summary</span>';
+        return;
+      }
+      elements.tags.innerHTML = moduleList
+        .map(item => `<span class="assistant-tag">${labelizeModule(item)}</span>`)
+        .join('');
+    }
+
+    function renderQuickActions() {
+      elements.quickActions.innerHTML = IMMUNEX_ASSISTANT_QUICK_ACTIONS
+        .map((item, index) => `<button type="button" class="assistant-quick-action" data-index="${index}">${item.label}</button>`)
+        .join('');
+      elements.quickActions.querySelectorAll('.assistant-quick-action').forEach(button => {
+        button.addEventListener('click', () => {
+          const action = IMMUNEX_ASSISTANT_QUICK_ACTIONS[Number(button.dataset.index)];
+          if (!action) return;
+          elements.input.value = action.prompt;
+          void submitQuestion(action.prompt);
+        });
+      });
+    }
+
+    function renderMessages() {
+      const messageHtml = state.messages.map(message => {
+        const roleLabel = message.role === 'user' ? 'User' : message.role === 'error' ? 'Error' : 'Assistant';
+        const metaLine = message.meta && message.meta.queryType
+          ? `<div class="assistant-message-meta">${message.meta.queryType}${message.meta.skill ? ` · ${message.meta.skill}` : ''}</div>`
+          : (message.meta && message.meta.skill ? `<div class="assistant-message-meta">${message.meta.skill}</div>` : '');
+        return `
+          <article class="assistant-message is-${message.role}">
+            <div class="assistant-message-role">${roleLabel}</div>
+            <div class="assistant-message-body">${message.text}</div>
+            ${metaLine}
+          </article>
+        `;
+      });
+      if (state.loading) {
+        messageHtml.push(`
+          <article class="assistant-message is-loading">
+            <div class="assistant-message-role">Assistant</div>
+            <div class="assistant-message-body">Thinking over the current report context...</div>
+          </article>
+        `);
+      }
+      elements.messages.innerHTML = messageHtml.join('');
+      elements.messages.scrollTop = elements.messages.scrollHeight;
+      elements.send.disabled = state.loading;
+    }
+
+    function formatMetricValue(value) {
+      if (value === null || value === undefined || value === '') return 'n/a';
+      if (typeof value === 'number') {
+        if (value > 0 && value < 1) return `${(value * 100).toFixed(1)}%`;
+        return String(Number.isInteger(value) ? value : value.toFixed(3));
+      }
+      return String(value);
+    }
+
+    function normalizeEvidencePanel(reply) {
+      if (reply && reply.evidence_panel && typeof reply.evidence_panel === 'object') {
+        return reply.evidence_panel;
+      }
+      return {
+        title: 'Evidence summary',
+        highlights: [],
+        bullets: Array.isArray(reply?.evidence) ? reply.evidence : [],
+        top_items_title: Array.isArray(reply?.top_items) && reply.top_items.length ? 'Top items' : '',
+        top_items: Array.isArray(reply?.top_items) ? reply.top_items : [],
+        sources: Array.isArray(reply?.sources) ? reply.sources : (Array.isArray(reply?.sources_used) ? reply.sources_used : []),
+        notes: []
+      };
+    }
+
+    function renderTopItems(items) {
+      return items.map(item => {
+        const title = item.pair || item.region || item.candidate_residue || item.family || item.residue_label || 'Item';
+        const metaEntries = Object.entries(item).filter(([key, value]) => !['pair', 'region', 'candidate_residue', 'family', 'residue_label'].includes(key) && value !== null && value !== undefined && value !== '');
+        const meta = metaEntries.map(([key, value]) => `<span class="assistant-evidence-metric"><span>${key.replaceAll('_', ' ')}</span><strong>${formatMetricValue(value)}</strong></span>`).join('');
+        return `
+          <div class="assistant-evidence-item">
+            <div class="assistant-evidence-item-title">${title}</div>
+            <div class="assistant-evidence-item-meta">${meta || '<span class="assistant-evidence-metric"><span>detail</span><strong>available</strong></span>'}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderEvidence() {
+      if (!state.evidence) {
+        elements.evidence.innerHTML = '<div class="assistant-evidence-empty">Evidence will appear here after the first reply.</div>';
+        return;
+      }
+      const panel = state.evidence;
+      const hasHighlights = Array.isArray(panel.highlights) && panel.highlights.length;
+      const hasBullets = Array.isArray(panel.bullets) && panel.bullets.length;
+      const hasTopItems = Array.isArray(panel.top_items) && panel.top_items.length;
+      const hasSources = Array.isArray(panel.sources) && panel.sources.length;
+      const hasNotes = Array.isArray(panel.notes) && panel.notes.length;
+      if (!hasHighlights && !hasBullets && !hasTopItems && !hasSources && !hasNotes) {
+        elements.evidence.innerHTML = '<div class="assistant-evidence-empty">Evidence will appear here after the first reply.</div>';
+        return;
+      }
+      const parts = [];
+      if (hasHighlights) {
+        parts.push(`
+          <div class="assistant-evidence-highlights">
+            ${panel.highlights.map(item => `
+              <div class="assistant-evidence-highlight">
+                <span>${item.label || 'metric'}</span>
+                <strong>${formatMetricValue(item.value)}</strong>
+              </div>
+            `).join('')}
+          </div>
+        `);
+      }
+      if (hasBullets) {
+        parts.push(`
+          <div class="assistant-evidence-section">
+            <div class="assistant-evidence-section-title">Key evidence</div>
+            <ul class="assistant-evidence-list">${panel.bullets.map(item => `<li>${item}</li>`).join('')}</ul>
+          </div>
+        `);
+      }
+      if (hasTopItems) {
+        parts.push(`
+          <div class="assistant-evidence-section">
+            <div class="assistant-evidence-section-title">${panel.top_items_title || 'Top items'}</div>
+            <div class="assistant-evidence-top-items">${renderTopItems(panel.top_items)}</div>
+          </div>
+        `);
+      }
+      if (hasSources) {
+        parts.push(`
+          <div class="assistant-evidence-section">
+            <div class="assistant-evidence-section-title">Sources</div>
+            <ul class="assistant-evidence-list">${panel.sources.map(item => `<li>${item}</li>`).join('')}</ul>
+          </div>
+        `);
+      }
+      if (hasNotes) {
+        parts.push(`
+          <div class="assistant-evidence-section">
+            <div class="assistant-evidence-section-title">Notes</div>
+            <ul class="assistant-evidence-list">${panel.notes.map(item => `<li>${item}</li>`).join('')}</ul>
+          </div>
+        `);
+      }
+      elements.evidence.innerHTML = parts.join('');
+    }
+
+    function pushMessage(role, text, meta = {}) {
+      state.messages.push({ role, text, meta });
+      renderMessages();
+    }
+
+    function seedIntroMessage() {
+      pushMessage(
+        'assistant',
+        'Ask about stability, interface state, hotspots, or candidate mutation directions for this single-job report.',
+        { skill: 'reporter-query' }
+      );
+    }
+
+    function buildStabilityResponse(context) {
+      const quality = context.quality || {};
+      const rmsf = context.rmsf || {};
+      if (!quality.verdict) {
+        return {
+          answer: 'The report does not expose a quality digest for this job yet.',
+          evidence: ['Quality summary is unavailable in the current page context.'],
+          sources: ['Embedded report context'],
+          queryType: 'quality_status',
+          skill: 'reporter-query'
+        };
+      }
+      const answer = quality.verdict === 'stable'
+        ? `The trajectory reads as stable, with a tail-90% RMSD variation of ${formatNumber(quality.tail90_variation_nm, 3)} nm.`
+        : quality.verdict === 'caution'
+          ? `The trajectory should be read with caution; the tail-90% RMSD variation is ${formatNumber(quality.tail90_variation_nm, 3)} nm.`
+          : `The trajectory retains broad variation; the tail-90% RMSD variation is ${formatNumber(quality.tail90_variation_nm, 3)} nm.`;
+      return {
+        answer,
+        evidence: [
+          `Full-trace RMSD variation: ${formatNumber(quality.full_variation_nm, 3)} nm.`,
+          `Tail-90% mean RMSD: ${formatNumber(quality.tail90_mean_rmsd_nm, 3)} nm.`,
+          rmsf.mean_rmsf_angstrom ? `Mean RMSF: ${formatNumber(rmsf.mean_rmsf_angstrom, 2)} Å.` : 'RMSF digest is not available for cross-checking.'
+        ],
+        sources: ['quality summary', 'RMSF summary'],
+        queryType: 'quality_status',
+        skill: 'reporter-query'
+      };
+    }
+
+    function buildInterfaceResponse(context) {
+      const iface = context.interface || {};
+      const contact = context.contact || {};
+      if (!iface.mean_bsa && !contact.annotated_pairs) {
+        return {
+          answer: 'The page does not expose enough interface digest to summarize the interface yet.',
+          evidence: ['Interface and contact summaries are missing in the current page context.'],
+          sources: ['Embedded report context'],
+          queryType: 'top_region',
+          skill: 'reporter-query'
+        };
+      }
+      return {
+        answer: `The interface is summarized by a mean buried surface area of ${formatNumber(iface.mean_bsa, 1)} Å² with ${contact.annotated_pairs || 'n/a'} annotated coarse-contact pairs.`,
+        evidence: [
+          iface.mean_interface_ratio ? `Mean interface ratio: ${formatNumber(iface.mean_interface_ratio, 3)}.` : 'Interface ratio is unavailable.',
+          contact.active_families ? `Active interaction families: ${contact.active_families}.` : 'Active family count is unavailable.',
+          Number.isFinite(contact.peptide_share) ? `Peptide-facing contact share: ${formatPercent(contact.peptide_share, 0)}.` : 'Peptide-facing share is unavailable.',
+          Number.isFinite(contact.groove_share) ? `Groove-facing contact share: ${formatPercent(contact.groove_share, 0)}.` : 'Groove-facing share is unavailable.'
+        ],
+        sources: ['interface summary', 'contact digest'],
+        queryType: 'top_region',
+        skill: 'reporter-query'
+      };
+    }
+
+    function buildHotspotResponse(context) {
+      const rrcs = context.rrcs || {};
+      const cluster = context.cluster || {};
+      const hotspot = rrcs.top_hotspot_pair || 'No hotspot pair available';
+      return {
+        answer: `The current top hotspot pair is ${hotspot}.`,
+        evidence: [
+          rrcs.identified_pairs ? `Identified RRCS-positive pairs: ${rrcs.identified_pairs}.` : 'RRCS pair count is unavailable.',
+          Array.isArray(rrcs.top_regions) && rrcs.top_regions.length ? `Most active RRCS regions: ${rrcs.top_regions.join(', ')}.` : 'RRCS region digest is unavailable.',
+          cluster.dominant_cluster ? `Dominant interface state: cluster ${cluster.dominant_cluster} at ${formatNumber(cluster.dominant_population_percent, 1)}%.` : 'Cluster digest is unavailable.'
+        ],
+        sources: ['RRCS summary', 'RRCS region digest', 'cluster summary'],
+        queryType: 'top_pair',
+        skill: 'reporter-query'
+      };
+    }
+
+    function buildMutationSuggestionResponse(context) {
+      const rrcs = context.rrcs || {};
+      const contact = context.contact || {};
+      const answer = rrcs.top_hotspot_pair
+        ? `A reasonable first-pass mutation discussion should start from residues participating in ${rrcs.top_hotspot_pair}, but treat this as a report-side suggestion rather than a validated design recommendation.`
+        : 'Mutation-site suggestion remains provisional because the embedded hotspot digest is limited.';
+      return {
+        answer,
+        evidence: [
+          rrcs.identified_pairs ? `RRCS identifies ${rrcs.identified_pairs} nonzero hotspot pairs in the current scope.` : 'RRCS pair count is unavailable.',
+          contact.top_contact_pair ? `Top coarse-contact pair: ${contact.top_contact_pair}.` : 'Top coarse-contact pair is unavailable.',
+          'Use this panel for triage only; final design should still be reviewed against full pair tables and structural context.'
+        ],
+        sources: ['RRCS summary', 'contact digest'],
+        queryType: 'design_hint',
+        skill: 'reporter-query'
+      };
+    }
+
+    function buildFallbackResponse(question, context) {
+      const modules = Array.isArray(context.available_modules) && context.available_modules.length
+        ? context.available_modules.join(', ')
+        : 'no embedded modules';
+      return {
+        answer: `I can read this single-job report through its embedded digest. Try asking about stability, interface, hotspots, or candidate sites. Your current question was: ${question}`,
+        evidence: [
+          `Scope: ${context.scope || 'Single trajectory report'}.`,
+          `Available embedded modules: ${modules}.`
+        ],
+        sources: ['Embedded report context'],
+        queryType: 'generic',
+        skill: 'reporter-query'
+      };
+    }
+
+    function buildMockAssistantResponse(question) {
+      const q = String(question || '').toLowerCase();
+      const context = getContext();
+      if (q.includes('stability') || q.includes('stable') || q.includes('quality')) {
+        return buildStabilityResponse(context);
+      }
+      if (q.includes('interface') || q.includes('summarize interface')) {
+        return buildInterfaceResponse(context);
+      }
+      if (q.includes('hotspot') || q.includes('rrcs')) {
+        return buildHotspotResponse(context);
+      }
+      if (q.includes('mutation') || q.includes('candidate site') || q.includes('design')) {
+        return buildMutationSuggestionResponse(context);
+      }
+      return buildFallbackResponse(question, context);
+    }
+
+    async function requestAssistantResponse(question) {
+      const config = window.IMMUNEX_ASSISTANT_CONFIG || {};
+      if (config.endpoint) {
+        try {
+          const response = await fetch(config.endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              question,
+              job_id: window.IMMUNEX_JOB_ID,
+              context: getContext(),
+              skill: 'reporter-query'
+            })
+          });
+          if (!response.ok) {
+            throw new Error(`Assistant request failed with status ${response.status}`);
+          }
+          return response.json();
+        } catch (error) {
+          if (!config.allow_mock_fallback) {
+            throw error;
+          }
+          console.warn('Assistant API unavailable, falling back to mock reply.', error);
+          return buildMockAssistantResponse(question);
+        }
+      }
+      return new Promise(resolve => {
+        window.setTimeout(() => resolve(buildMockAssistantResponse(question)), 420);
+      });
+    }
+
+    async function submitQuestion(rawQuestion) {
+      const question = String(rawQuestion || '').trim();
+      if (!question || state.loading) return;
+      pushMessage('user', question);
+      elements.input.value = '';
+      state.loading = true;
+      renderMessages();
+      try {
+        const reply = await requestAssistantResponse(question);
+        state.evidence = normalizeEvidencePanel(reply);
+        pushMessage('assistant', reply.answer || 'No answer returned.', {
+          queryType: reply.queryType || 'generic',
+          skill: reply.skill || 'reporter-query'
+        });
+        renderEvidence();
+      } catch (error) {
+        state.evidence = null;
+        pushMessage('error', error instanceof Error ? error.message : 'Assistant request failed.', { skill: 'reporter-query' });
+        renderEvidence();
+      } finally {
+        state.loading = false;
+        renderMessages();
+      }
+    }
+
+    function bindEvents() {
+      elements.fab.addEventListener('click', () => setOpen(!state.open));
+      elements.overlay.addEventListener('click', () => setOpen(false));
+      elements.close.addEventListener('click', () => setOpen(false));
+      elements.composer.addEventListener('submit', event => {
+        event.preventDefault();
+        void submitQuestion(elements.input.value);
+      });
+      elements.input.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          void submitQuestion(elements.input.value);
+        }
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && state.open) {
+          setOpen(false);
+        }
+      });
+    }
+
+    function init() {
+      renderContext();
+      renderQuickActions();
+      seedIntroMessage();
+      renderMessages();
+      renderEvidence();
+      bindEvents();
+    }
+
+    return { init };
+  })();
+
+  ImmunexAssistant.init();
+    """
+    return (template
+        .replace("__JOB_ID_JSON__", json.dumps(system_id, ensure_ascii=False))
+        .replace("__REPORT_CONTEXT_JSON__", json.dumps(assistant_context, ensure_ascii=False))
+        .replace("__ASSISTANT_CONFIG_JSON__", json.dumps(config, ensure_ascii=False)))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="生成单体系 interaction HTML 报告。")
     parser.add_argument(
@@ -2316,10 +3838,16 @@ def parse_args() -> argparse.Namespace:
         help="可选：指定关键界面聚类结果根目录（包含 analysis/conformation/interface_clustering）。",
     )
     parser.add_argument(
+        "--rrcs-root",
+        type=Path,
+        default=None,
+        help="可选：指定 RRCS 结果根目录（包含 analysis/interactions/rrcs）。",
+    )
+    parser.add_argument(
         "--include-sections",
         type=str,
         default=None,
-        help="可选：逗号分隔，仅保留指定 section（overview,quality,interface,flexibility,cluster,occupancy,contact,interactions,downloads）。",
+        help="可选：逗号分隔，仅保留指定 section（overview,quality,interface,flexibility,rrcs,cluster,occupancy,contact,interactions,downloads）。",
     )
     parser.add_argument(
         "--exclude-sections",
@@ -2345,13 +3873,14 @@ def build_interaction_html_report(
     bsa_root: Path | None = None,
     rmsf_root: Path | None = None,
     identity_root: Path | None = None,
+    rrcs_root: Path | None = None,
     cluster_root: Path | None = None,
     include_sections: list[str] | None = None,
     exclude_sections: list[str] | None = None,
 ) -> Path:
     overview_dir = base_dir / "overview"
     global REPORT_PATHS
-    REPORT_PATHS = build_report_paths(base_dir, system_id)
+    REPORT_PATHS = build_report_paths(base_dir, overview_dir, system_id)
     overview_csv = overview_dir / "interaction_overview.csv"
     overview_json = overview_dir / "interaction_overview.json"
     rows = load_overview_rows(overview_csv)
@@ -2365,8 +3894,10 @@ def build_interaction_html_report(
     quality_root = choose_quality_root(None, source_pdb)
     bsa_root = choose_bsa_root(bsa_root, source_pdb, system_id)
     rmsf_root = choose_rmsf_root(rmsf_root, source_pdb, system_id)
+    rrcs_root = choose_rrcs_root(rrcs_root, source_pdb, system_id)
     cluster_root = choose_cluster_root(cluster_root, system_id)
     occupancy_payload = discover_occupancy_payloads(base_dir, system_id, overview_dir)
+    report_frames = load_report_frames()
     contact_report = base_dir / "contact" / system_id / "analysis/contacts/contact_report.csv"
     cdr_metadata = base_dir / "contact" / system_id / "cdr_metadata.json"
     build_viewer_structure(source_pdb, viewer_pdb)
@@ -2376,6 +3907,7 @@ def build_interaction_html_report(
     bsa_payload = build_bsa_assets(overview_dir, bsa_root)
     rmsf_payload = build_rmsf_assets(overview_dir, rmsf_root)
     identity_payload = build_biological_identity_assets(overview_dir, source_pdb, cdr_metadata, identity_root=identity_root)
+    rrcs_payload = build_rrcs_assets(overview_dir, figures_dir, rrcs_root)
     cluster_payload = build_cluster_assets(overview_dir, cluster_root)
     visible_sections = normalize_visible_sections(
         include_sections=include_sections,
@@ -2383,13 +3915,32 @@ def build_interaction_html_report(
         quality_payload=quality_payload,
         bsa_payload=bsa_payload,
         rmsf_payload=rmsf_payload,
+        rrcs_payload=rrcs_payload,
         cluster_payload=cluster_payload,
         occupancy_payload=occupancy_payload,
     )
 
+    assistant_context = build_assistant_context(
+        system_id=system_id,
+        visible_sections=visible_sections,
+        rows=rows,
+        report_frames=report_frames,
+        quality_payload=quality_payload,
+        bsa_payload=bsa_payload,
+        rmsf_payload=rmsf_payload,
+        rrcs_payload=rrcs_payload,
+        cluster_payload=cluster_payload,
+        occupancy_payload=occupancy_payload,
+        identity_payload=identity_payload,
+    )
+    assistant_css = build_assistant_css()
+    assistant_markup = build_assistant_markup()
+    assistant_script = build_assistant_script(system_id, assistant_context)
+
     quality_section = optional_block("quality" in visible_sections, build_quality_section(quality_payload))
     interface_section = optional_block("interface" in visible_sections, build_bsa_section(bsa_payload))
     flexibility_section = optional_block("flexibility" in visible_sections, build_rmsf_section(rmsf_payload))
+    rrcs_section = optional_block("rrcs" in visible_sections, build_rrcs_section(rrcs_payload))
     cluster_section = optional_block("cluster" in visible_sections, build_cluster_section(cluster_payload))
     occupancy_section = optional_block("occupancy" in visible_sections, build_occupancy_section(occupancy_payload))
     contact_section = optional_block(
@@ -2397,38 +3948,39 @@ def build_interaction_html_report(
         f"""
     <section class="section" id="contact">
       <h2>Interface Landscape</h2>
-      <p class="note">This section is the global map of the interface: which families are populated, how large they are, and where the main hotspots sit before drilling down into specific residue pairs.</p>
-      <div class="family-grid">
-        {build_cards(rows)}
+      <p class="note">This section is intentionally kept compact. It gives one high-level reading of where the interface is concentrated before persistence and residue-pair detail sections take over.</p>
+      <div class="quality-grid">
+        {build_contact_metric_cards(rows, report_frames)}
+      </div>
+      <div class="quality-banner" style="margin-top:18px;">
+        <div class="quality-banner-badge">Digest</div>
+        <div class="quality-banner-body">
+          <strong>Landscape reading</strong>
+          <span>Use the region-level figures first, then the small top-pair table below. Full family cards, full pair tables, and full heatmaps are kept out of the main reading path.</span>
+        </div>
       </div>
     </section>
 
     <section class="section">
-      <h2>Unified Summary Table</h2>
-      <p class="note">This table is kept compact on purpose. It gives one comparison layer across families before moving into persistence or pair-level interpretation.</p>
-      {build_table(rows)}
-    </section>
-
-    <section class="section">
       <h2>Landscape Takeaways</h2>
-      <p class="note">These are the shortest global conclusions that can be read before opening any family-specific detail.</p>
+      <p class="note">These are the shortest global conclusions that can be read before any deeper drill-down.</p>
       <ul class="takeaways">
         {build_key_takeaways(rows, bsa_payload, rmsf_payload)}
       </ul>
     </section>
 
     <section class="section">
-      <h2>Analytical Figures</h2>
-      <p class="note">These figures summarize scale and hotspot structure at the landscape level. They are meant to orient the reader, not to replace pair-level interpretation.</p>
+      <h2>Primary Figures</h2>
+      <p class="note">Only the most legible global views are shown here: region-level composition and the dominant coarse-contact hotspots.</p>
       <div class="insight-grid">
         {build_figure_gallery(analytical_figures)}
       </div>
     </section>
 
     <section class="section">
-      <h2>Representative Heatmaps</h2>
-      <p class="note">Only the most informative spatial views are shown here, so the landscape section stays global rather than turning into a full result browser.</p>
-      {build_heatmap_sections(rows)}
+      <h2>Top Contact Pairs</h2>
+      <p class="note">This table is the main residue-level digest for the contact module. The full residue matrix and family-specific details stay in downloads and the Residue Pairs section.</p>
+      {build_contact_digest_table(report_frames.get("contact", pd.DataFrame()))}
     </section>
         """,
     )
@@ -2439,14 +3991,14 @@ def build_interaction_html_report(
       <h2>Residue-Pair Definitions</h2>
       <p class="note">This section shifts from family-level landscape to concrete residue pairs. Each family is shown through the amino-acid pairs that actually define it.</p>
       <div class="family-detail-grid">
-        {build_family_pair_gallery(rows, figures_dir)}
+        {build_family_pair_gallery(rows, figures_dir, overview_dir)}
       </div>
     </section>
         """,
     )
     downloads_section = optional_block(
         "downloads" in visible_sections,
-        build_downloads_section(identity_payload, bsa_payload, rmsf_payload, cluster_payload),
+        build_downloads_section(overview_dir, identity_payload, bsa_payload, rmsf_payload, rrcs_payload, cluster_payload),
     )
 
     html_text = f"""<!DOCTYPE html>
@@ -3403,6 +4955,7 @@ def build_interaction_html_report(
       color: var(--muted);
       line-height: 1.5;
     }}
+{assistant_css}
     @media (max-width: 900px) {{
       .page {{ padding: 20px 14px 40px; }}
       .hero h1 {{ font-size: 28px; }}
@@ -3492,6 +5045,8 @@ def build_interaction_html_report(
 
     {flexibility_section}
 
+    {rrcs_section}
+
     {cluster_section}
 
     {occupancy_section}
@@ -3502,8 +5057,10 @@ def build_interaction_html_report(
 
     {downloads_section}
   </main>
+  {assistant_markup}
 </body>
 <script>
+{assistant_script}
   const viewerElement = document.getElementById('mol-viewer');
   const pdbUrl = './{VIEWER_PDB_NAME}';
   const metaUrl = './{VIEWER_META_NAME}';

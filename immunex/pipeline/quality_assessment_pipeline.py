@@ -17,7 +17,7 @@ from typing import Dict, Optional
 import json
 
 from ..analysis.quality.post_pbc_validator import PostPBCValidator
-from ..analysis.trajectory.rmsd import RMSDCalculator
+from ..analysis.trajectory.rmsd_refactored import RMSDCalculator, RMSDInput
 from ..analysis.trajectory.rmsd_convergence import RMSDConvergenceAnalyzer
 
 
@@ -146,19 +146,27 @@ class QualityAssessmentPipeline:
 
             # Step 2: RMSD calculation
             self.logger.info("Step 2/3: RMSD calculation")
-            rmsd_calc = RMSDCalculator(topology, trajectory)
+            rmsd_calc = RMSDCalculator()
 
-            # Save RMSD to output_dir if provided
             rmsd_output = None
             if output_dir:
                 output_path = Path(output_dir)
                 output_path.mkdir(parents=True, exist_ok=True)
                 rmsd_output = str(output_path / "rmsd.csv")
 
-            times, rmsd_values = rmsd_calc.calculate_mdanalysis(
-                selection=rmsd_selection,
-                output_file=rmsd_output
+            rmsd_result = rmsd_calc.calculate(
+                RMSDInput(
+                    topology=topology,
+                    trajectory=trajectory,
+                    selection=rmsd_selection,
+                    output_file=rmsd_output,
+                )
             )
+            if not rmsd_result.success or rmsd_result.times is None or rmsd_result.rmsd_values is None:
+                raise RuntimeError(rmsd_result.error_message or "RMSD calculation failed")
+
+            times = rmsd_result.times
+            rmsd_values = rmsd_result.rmsd_values
 
             # Step 3: Convergence analysis
             self.logger.info("Step 3/3: Convergence analysis")

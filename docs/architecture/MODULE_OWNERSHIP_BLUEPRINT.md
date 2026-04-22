@@ -1,7 +1,7 @@
 # Module Ownership Blueprint
 
 **Status**: Target state
-**Goal**: Define where code belongs so `core`, `analysis`, `pipeline`, `utils`, and `legacy` stop drifting.
+**Goal**: Define where code belongs so `core`, `analysis`, `pipeline`, and `utils` stop drifting.
 
 ## Decision Summary
 
@@ -13,7 +13,6 @@ Immunex should use this ownership model:
 - `cli`: user-facing command translation only
 - `cluster`: remote packaging of the same workflows
 - `utils`: generic helper utilities only
-- `legacy`: isolated retired interfaces, never default product surface
 
 ## Layer Boundaries
 
@@ -114,18 +113,6 @@ Must not own:
 - index semantics tied to pHLA-TCR biology
 - batch product entrypoints
 
-### `legacy`
-
-Owns:
-
-- retired compatibility APIs kept for controlled migration only
-
-Rules:
-
-- never re-export from default package surface
-- never reference from active product docs
-- never use for new code
-
 ## Final Ownership Decisions
 
 ### Keep In `core`
@@ -201,7 +188,7 @@ If names remain misleading, contributors will continue putting code in the wrong
 
 1. If a module owns a scientific calculation, it does not belong in `core` or `cli`.
 2. If a module builds a workflow from multiple steps, it belongs in `pipeline`.
-3. If a module exists only for backward compatibility, it belongs in `legacy`.
+3. If a module exists only for backward compatibility, it should stay out of the active package tree and be archived explicitly.
 4. If a module needs pHLA-TCR biological semantics, it is not a generic `utils` helper.
 5. `utils` is for support code, not product ownership.
 
@@ -214,4 +201,4 @@ The structure is clean when:
 - `analysis` contains no workflow orchestration
 - `pipeline` contains no low-level science implementation
 - `utils` contains no domain policy
-- `legacy` is isolated and optional
+- retired compatibility code stays outside the active package tree

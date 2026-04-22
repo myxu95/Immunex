@@ -13,6 +13,7 @@ Usage:
     imn batch cationpi <base_dir> [options]
     imn batch angle <base_dir> [options]
     imn batch bsa <base_dir> [options]
+    imn batch rrcs <base_dir> [options]
 
 Author: Immunex Development Team
 Date: 2026-03-15
@@ -41,6 +42,7 @@ from immunex.pipeline import (
     PiStackingInteractionPipeline,
     CationPiInteractionPipeline,
     BSAPipeline,
+    RRCSPipeline,
     PreprocessQualityPipeline,
     QualityAssessmentPipeline,
 )
@@ -83,6 +85,9 @@ Examples:
 
   Batch buried surface area analysis:
     imn batch bsa /data/processed_md/ --workers 4 --stride 10
+
+  Batch RRCS analysis:
+    imn batch rrcs /data/processed_md/ --workers 4 --stride 5 --pair-scope interface
 
   Combined workflow:
     imn batch workflow /data/md_tasks/ --workers 4
@@ -173,6 +178,22 @@ Examples:
     bsa_parser.add_argument('--time-unit', choices=['ps', 'ns'], default='ps', help='Output time unit (default: ps)')
     bsa_parser.add_argument('-o', '--output-dir', help='Override output directory')
     bsa_parser.add_argument('--summary', help='Save summary JSON file')
+
+    rrcs_parser = subparsers.add_parser('rrcs', help='Batch RRCS analysis')
+    rrcs_parser.add_argument('base_dir', help='Base directory containing processed trajectories')
+    rrcs_parser.add_argument('--workers', type=int, default=4, help='Number of parallel workers (default: 4)')
+    rrcs_parser.add_argument('--stride', type=int, default=1, help='Trajectory stride for RRCS analysis (default: 1)')
+    rrcs_parser.add_argument('--radius-min', type=float, default=3.23, help='RRCS minimum full-score distance in Angstrom (default: 3.23)')
+    rrcs_parser.add_argument('--radius-max', type=float, default=4.63, help='RRCS zero-score distance in Angstrom (default: 4.63)')
+    rrcs_parser.add_argument(
+        '--pair-scope',
+        choices=['interface', 'cdr3_peptide', 'cdr3_groove', 'tcr_peptide', 'tcr_groove', 'tcr_interface'],
+        default='interface',
+        help='Default residue-pair scope when no pair file is provided (default: interface)',
+    )
+    rrcs_parser.add_argument('--pair-file', help="Optional custom residue-pair file. Format per line: 'D:95-100 $ C:4-6'")
+    rrcs_parser.add_argument('-o', '--output-dir', help='Override output directory')
+    rrcs_parser.add_argument('--summary', help='Save summary JSON file')
 
     workflow_parser = subparsers.add_parser('workflow', help='Complete workflow (PBC + Quality)')
     workflow_parser.add_argument('base_dir', help='Base directory containing MD tasks')
@@ -1310,6 +1331,97 @@ def handle_bsa(args, logger):
     return 0 if results['failed'] == 0 else 1
 
 
+def handle_rrcs(args, logger):
+    """Handle batch RRCS analysis."""
+    base_dir = Path(args.base_dir)
+    if not base_dir.exists():
+        logger.error(f"Base directory not found: {args.base_dir}")
+        return 1
+    if args.pair_file and not Path(args.pair_file).exists():
+        logger.error(f"Pair file not found: {args.pair_file}")
+        return 1
+
+    logger.info('=' * 60)
+    logger.info('IMN Batch RRCS Analysis')
+    logger.info('=' * 60)
+    logger.info(f'Base directory: {args.base_dir}')
+    logger.info(f'Workers: {args.workers}')
+    logger.info(f'Stride: {args.stride}')
+    logger.info(f'Radius min: {args.radius_min} A')
+    logger.info(f'Radius max: {args.radius_max} A')
+    logger.info(f'Pair scope: {args.pair_scope}')
+    if args.pair_file:
+        logger.info(f'Pair file: {args.pair_file}')
+    logger.info('')
+
+    output_root = args.output_dir or str(Path('./output') / 'rrcs_batch' / base_dir.name)
+
+    try:
+        report = _discover_execution_report(
+            base_dir,
+            required_files=['topology', 'trajectory', 'structure'],
+        )
+    except Exception as exc:
+        logger.error(f'Task discovery failed: {exc}')
+        return 1
+
+    if report.num_valid == 0:
+        logger.error('No valid tasks found for batch RRCS analysis')
+        return 1
+
+    if report.num_invalid or report.num_ambiguous:
+        logger.info(f'Skipped {report.num_invalid} invalid and {report.num_ambiguous} ambiguous tasks')
+
+    pipeline = RRCSPipeline(
+        radius_min=args.radius_min,
+        radius_max=args.radius_max,
+        stride=args.stride,
+        pair_scope=args.pair_scope,
+        pair_file=str(Path(args.pair_file).resolve()) if args.pair_file else None,
+        auto_identify_chains=True,
+        auto_detect_cdr=True,
+    )
+    executor = BatchExecutor(max_workers=args.workers)
+
+    try:
+        contexts = executor.execute_pipeline(
+            report,
+            pipeline,
+            show_progress=not args.verbose,
+            output_base_dir=output_root,
+        )
+    except Exception as exc:
+        logger.error(f'Batch RRCS analysis failed: {exc}')
+        return 1
+
+    results = _summarize_context_results(contexts)
+    results['output_directory'] = output_root
+    results['parameters'] = {
+        'stride': args.stride,
+        'radius_min': args.radius_min,
+        'radius_max': args.radius_max,
+        'pair_scope': args.pair_scope,
+        'pair_file': str(Path(args.pair_file).resolve()) if args.pair_file else '',
+    }
+    for item, context in zip(results['results'], contexts):
+        item['rrcs'] = context.results.get('rrcs')
+
+    if args.summary:
+        summary_path = Path(args.summary)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(summary_path, 'w') as handle:
+            json.dump(results, handle, indent=2, default=str)
+        logger.info(f'Summary JSON: {summary_path}')
+
+    logger.info('')
+    logger.info('Batch RRCS summary')
+    logger.info(f"Total tasks: {results['total_tasks']}")
+    logger.info(f"Successful: {results['successful']}")
+    logger.info(f"Failed: {results['failed']}")
+    logger.info(f"Output directory: {results['output_directory']}")
+    return 0 if results['failed'] == 0 else 1
+
+
 def handle_workflow(args, logger):
     """Handle complete workflow (PBC + Quality)"""
     logger.info('=' * 60)
@@ -1381,6 +1493,8 @@ def main(argv=None):
             return handle_angle(args, logger)
         if args.action == 'bsa':
             return handle_bsa(args, logger)
+        if args.action == 'rrcs':
+            return handle_rrcs(args, logger)
         if args.action == 'workflow':
             return handle_workflow(args, logger)
 

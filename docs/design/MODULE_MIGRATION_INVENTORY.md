@@ -301,11 +301,6 @@ But rule:
 
 - cluster code must only package pipeline-facing entrypoints
 
-### Keep In `legacy`
-
-- `legacy/task_discovery.py`
-- `legacy/batch_processor.py`
-
 ## Migration Order
 
 1. Move remaining topology utilities out of `utils/`

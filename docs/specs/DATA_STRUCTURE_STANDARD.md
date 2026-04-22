@@ -351,7 +351,7 @@ report = discover_tasks(
 
 1. **公开主路径统一**: 默认使用 `discover_tasks(...)` 和 `DiscoveryReport`
 2. **阶段化输入要求**: 通过 `required_files` 声明不同 pipeline 的输入契约
-3. **legacy代码隔离**: 历史实现仅保留在 `immunex.legacy`
+3. **历史实现隔离**: 历史实现不再保留在活动代码树中，必要时仅存放在归档文档或开发区
 
 ### 7.2 迁移建议
 

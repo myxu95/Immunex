@@ -31,14 +31,14 @@ class BatchExecutor:
 
     Example:
         >>> from pathlib import Path
-        >>> from immunex.pipeline import BatchExecutor, StandardTrajectoryPipeline
+        >>> from immunex.pipeline import BatchExecutor, PreprocessQualityPipeline
         >>> from immunex.core import discover_tasks
         >>>
         >>> report = discover_tasks(Path("/data/simulations"))
         >>> executor = BatchExecutor(max_workers=4)
         >>> results = executor.execute_pipeline(
         ...     report,
-        ...     StandardTrajectoryPipeline()
+        ...     PreprocessQualityPipeline()
         ... )
         >>> summary = executor.summarize_results(results)
         >>> print(f"Success: {summary['successful']}/{summary['total_tasks']}")

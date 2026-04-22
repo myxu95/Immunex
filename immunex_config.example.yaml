@@ -1,0 +1,35 @@
+# Immunex Reporter Configuration
+# Place this file at: ~/.immunex/config.yaml or ./immunex_config.yaml
+
+reporter:
+  # LLM Configuration
+  llm:
+    enabled: true
+    provider: openai  # openai, anthropic
+    model: gpt-4o-mini  # optional, uses provider default if not set
+
+    # API Keys (can also use environment variables)
+    api_key: null  # or set OPENAI_API_KEY / ANTHROPIC_API_KEY
+
+    # Generation parameters
+    temperature: 0.3
+    max_tokens: 800
+
+    # Fallback behavior
+    fallback_to_rules: true  # if LLM fails, use rule-based answers
+
+  # Cache configuration (optional)
+  cache:
+    enabled: true
+    ttl_seconds: 3600  # 1 hour
+    max_size_mb: 100
+
+# Server configuration
+server:
+  host: 127.0.0.1
+  port: 8770
+
+  # CORS settings (if needed for web deployment)
+  cors:
+    enabled: false
+    allowed_origins: ["http://localhost:3000"]

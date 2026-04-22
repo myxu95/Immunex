@@ -5,9 +5,6 @@ from .pdb_downloader import PDBDownloader
 from .multimodel_concatenator import MultiModelConcatenator
 from .selection_string_builder import SelectionStringBuilder
 
-# pHLA-TCR visualization
-from .phla_visualization import pHLATCRVisualizer
-
 __all__ = [
     "PlotManager",
     "PathManager",
@@ -15,5 +12,4 @@ __all__ = [
     "PDBDownloader",
     "MultiModelConcatenator",
     "SelectionStringBuilder",
-    "pHLATCRVisualizer"
 ]

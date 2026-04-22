@@ -258,14 +258,18 @@ output/
 ### 6.1 单任务指定输出
 
 ```python
-from immunex.pipeline import PBCRMSDPipeline
+from immunex.core.context import PipelineContext
+from immunex.pipeline import PreprocessQualityPipeline
 
-pipeline = PBCRMSDPipeline()
-result = pipeline.process_single_trajectory(
-    trajectory="input/database/parallel2/3d39_run2/prod/md.xtc",
+context = PipelineContext(
+    system_id="3d39_run2",
     topology="input/database/parallel2/3d39_run2/prod/md.tpr",
-    output_dir="output/my_analysis/3d39_run2"  # 明确指定输出路径
+    trajectory_raw="input/database/parallel2/3d39_run2/prod/md.xtc",
+    output_dir="output/my_analysis/3d39_run2",
 )
+
+pipeline = PreprocessQualityPipeline()
+pipeline.execute(context)
 ```
 
 **生成结构**：
@@ -425,7 +429,7 @@ input/.../3d39_run2/  →  output/.../3d39_run2/
   "input_topology": "input/database/parallel2/3d39_run2/prod/md.tpr",
   "input_trajectory": "input/database/parallel2/3d39_run2/prod/md.xtc",
   "processed_at": "2026-03-17T15:00:00",
-  "pipeline": "PBCRMSDPipeline",
+  "pipeline": "PreprocessQualityPipeline",
   "version": "1.0.0"
 }
 ```
